@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- Icono: Ojo estilizado con ondas de radar -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,30
+                         C35,30 19,42 12,54
+                         C19,66 35,78 54,78
+                         C73,78 89,66 96,54
+                         C89,42 73,30 54,30z
+                         M54,70
+                         C45.2,70 38,62.8 38,54
+                         C38,45.2 45.2,38 54,38
+                         C62.8,38 70,45.2 70,54
+                         C70,62.8 62.8,70 54,70z"/>
+    
+    <!-- Pupila central -->
+    <path
+        android:fillColor="#1565C0"
+        android:pathData="M54,46
+                         C49.6,46 46,49.6 46,54
+                         C46,58.4 49.6,62 54,62
+                         C58.4,62 62,58.4 62,54
+                         C62,49.6 58.4,46 54,46z"/>
+    
+    <!-- Ondas de detección -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.3"
+        android:pathData="M54,20 A34,34 0 0,1 88,54"
+        android:strokeWidth="2"
+        android:strokeColor="#FFFFFF"/>
+    
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.5"
+        android:pathData="M54,25 A29,29 0 0,1 83,54"
+        android:strokeWidth="2"
+        android:strokeColor="#FFFFFF"/>
+        
+</vector>

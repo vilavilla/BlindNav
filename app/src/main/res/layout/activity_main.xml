@@ -1,0 +1,225 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout 
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000"
+    tools:context=".ui.MainActivity">
+
+    <!-- ============================================ -->
+    <!-- CAPA 1: PREVIEW DE CÁMARA -->
+    <!-- ============================================ -->
+    <androidx.camera.view.PreviewView
+        android:id="@+id/previewView"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:layout_constraintBottom_toTopOf="@id/navInfoContainer"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <!-- ============================================ -->
+    <!-- CAPA 2: OVERLAY DE BOUNDING BOXES -->
+    <!-- ============================================ -->
+    <com.blindnav.app.ui.overlay.BoundingBoxOverlay
+        android:id="@+id/boundingBoxOverlay"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:layout_constraintBottom_toBottomOf="@id/previewView"
+        app:layout_constraintEnd_toEndOf="@id/previewView"
+        app:layout_constraintStart_toStartOf="@id/previewView"
+        app:layout_constraintTop_toTopOf="@id/previewView" />
+
+    <!-- ============================================ -->
+    <!-- CAPA 3: OVERLAY DE PELIGRO (FLASH ROJO) -->
+    <!-- ============================================ -->
+    <View
+        android:id="@+id/hazardOverlay"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:alpha="0"
+        android:background="#F44336"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="@id/previewView"
+        app:layout_constraintEnd_toEndOf="@id/previewView"
+        app:layout_constraintStart_toStartOf="@id/previewView"
+        app:layout_constraintTop_toTopOf="@id/previewView" />
+
+    <!-- ============================================ -->
+    <!-- INDICADOR DE NIVEL (ESQUINA SUPERIOR) -->
+    <!-- ============================================ -->
+    <TextView
+        android:id="@+id/tvHazardIndicator"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_margin="16dp"
+        android:background="@drawable/hazard_badge_background"
+        android:paddingHorizontal="24dp"
+        android:paddingVertical="12dp"
+        android:text="SAFE"
+        android:textColor="#FFFFFF"
+        android:textSize="28sp"
+        android:textStyle="bold"
+        android:fontFamily="monospace"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <!-- ============================================ -->
+    <!-- CONTENEDOR DE ESTADO (PANEL INFERIOR) -->
+    <!-- ============================================ -->
+    <LinearLayout
+        android:id="@+id/statusContainer"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:background="#E6000000"
+        android:orientation="vertical"
+        android:padding="20dp"
+        app:layout_constraintBottom_toTopOf="@id/buttonsContainer"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent">
+
+        <!-- TEXTO DE ESTADO PRINCIPAL (GIGANTE) -->
+        <TextView
+            android:id="@+id/tvStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:text="LISTO"
+            android:textColor="#FFFFFF"
+            android:textSize="32sp"
+            android:textStyle="bold"
+            android:fontFamily="sans-serif-condensed" />
+
+        <!-- NIVEL DE PELIGRO (TEXTO GRANDE) -->
+        <TextView
+            android:id="@+id/tvHazardLevel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:gravity="center"
+            android:text="SAFE"
+            android:textColor="#4CAF50"
+            android:textSize="48sp"
+            android:textStyle="bold"
+            android:fontFamily="monospace" />
+
+        <!-- INFO DE DEBUG -->
+        <TextView
+            android:id="@+id/tvDebugInfo"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:gravity="center"
+            android:text="0 FPS | 0 obstáculos | 0 ms"
+            android:textColor="#888888"
+            android:textSize="14sp"
+            android:fontFamily="monospace" />
+
+    </LinearLayout>
+
+    <!-- ============================================ -->
+    <!-- INFO DE NAVEGACIÓN GPS -->
+    <!-- ============================================ -->
+    <LinearLayout
+        android:id="@+id/navInfoContainer"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:background="#CC1565C0"
+        android:orientation="vertical"
+        android:padding="12dp"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <TextView
+            android:id="@+id/tvNavDestination"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Navegando a: ---"
+            android:textColor="#FFFFFF"
+            android:textSize="20sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tvNavDistance"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Distancia: --- m"
+            android:textColor="#E3F2FD"
+            android:textSize="16sp" />
+
+        <TextView
+            android:id="@+id/tvNavBearing"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Dirección: ---"
+            android:textColor="#BBDEFB"
+            android:textSize="14sp"
+            android:fontFamily="monospace" />
+
+    </LinearLayout>
+
+    <!-- ============================================ -->
+    <!-- CONTENEDOR DE BOTONES -->
+    <!-- ============================================ -->
+    <LinearLayout
+        android:id="@+id/buttonsContainer"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_margin="16dp"
+        android:orientation="horizontal"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent">
+
+        <!-- BOTÓN DE VOZ (MICRÓFONO) -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnVoice"
+            android:layout_width="0dp"
+            android:layout_height="100dp"
+            android:layout_weight="1"
+            android:layout_marginEnd="8dp"
+            android:text="🎤\nVOZ"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:backgroundTint="#7B1FA2"
+            app:cornerRadius="20dp" />
+
+        <!-- BOTÓN PRINCIPAL (SAFETY ON/OFF) -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnToggleNavigation"
+            android:layout_width="0dp"
+            android:layout_height="100dp"
+            android:layout_weight="2"
+            android:text="▶ INICIAR"
+            android:textSize="24sp"
+            android:textStyle="bold"
+            android:backgroundTint="#1565C0"
+            app:cornerRadius="20dp" />
+
+    </LinearLayout>
+
+    <!-- ============================================ -->
+    <!-- INDICADOR DE VOZ ESCUCHANDO -->
+    <!-- ============================================ -->
+    <TextView
+        android:id="@+id/tvVoiceStatus"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="8dp"
+        android:background="#CC000000"
+        android:paddingHorizontal="20dp"
+        android:paddingVertical="10dp"
+        android:text="🎤 Escuchando..."
+        android:textColor="#FFEB3B"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@id/buttonsContainer"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

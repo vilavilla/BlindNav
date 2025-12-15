@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- ============================================ -->
+    <!-- PERMISOS CRÍTICOS PARA BLINDNAV -->
+    <!-- ============================================ -->
+    
+    <!-- Cámara: Acceso al flujo de video para detección -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    
+    <!-- Vibración: Feedback háptico de seguridad -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+    
+    <!-- GPS: Navegación por ubicación -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    
+    <!-- Micrófono: Comandos de voz -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    
+    <!-- Internet: Reconocimiento de voz (Google Speech) -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    
+    <!-- ARCore: Requiere funciones AR -->
+    <uses-feature android:name="android.hardware.camera.ar" android:required="false" />
+    <uses-feature android:name="android.hardware.camera" android:required="true" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+    
+    <!-- Mantener pantalla activa durante navegación -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <application
+        android:name=".BlindNavApplication"
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.BlindNav"
+        tools:targetApi="34">
+
+        <!-- Metadatos de ARCore -->
+        <meta-data
+            android:name="com.google.ar.core"
+            android:value="required" />
+
+        <!-- Activity Principal -->
+        <activity
+            android:name=".ui.MainActivity"
+            android:exported="true"
+            android:screenOrientation="portrait"
+            android:keepScreenOn="true"
+            android:theme="@style/Theme.BlindNav">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+    </application>
+
+</manifest>

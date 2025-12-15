@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">BlindNav</string>
+    <string name="camera_permission_required">Se requiere acceso a la cámara para detectar obstáculos</string>
+    <string name="status_scanning">Escaneando entorno...</string>
+    <string name="status_safe">Ruta despejada</string>
+    <string name="status_warning">Precaución: Obstáculo detectado</string>
+    <string name="status_critical">¡PELIGRO! Obstáculo cercano</string>
+    <string name="btn_start">Iniciar navegación</string>
+    <string name="btn_stop">Detener</string>
+</resources>

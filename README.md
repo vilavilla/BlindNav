@@ -1,46 +1,237 @@
 # BlindNav 🦯
 
-**Aplicación Android de navegación y detección de obstáculos para personas con discapacidad visual.**
+**Android navigation and obstacle detection app for visually impaired people.**
 
-> El usuario puede decir *"Llévame a la farmacia"* y el sistema lo guía paso a paso mientras escanea el entorno en busca de obstáculos.
-
----
-
-## 📋 Índice
-
-1. [Descripción General](#-descripción-general)
-2. [Arquitectura del Sistema](#-arquitectura-del-sistema)
-3. [Flujo de Datos](#-flujo-de-datos)
-4. [Componentes Principales](#-componentes-principales)
-5. [Sistema de Prioridad de Audio](#-sistema-de-prioridad-de-audio)
-6. [Cómo Funciona la Navegación](#-cómo-funciona-la-navegación)
-7. [Detección de Obstáculos (Safety)](#-detección-de-obstáculos-safety)
-8. [Comandos de Voz](#-comandos-de-voz)
-9. [Permisos Requeridos](#-permisos-requeridos)
-10. [Estructura del Proyecto](#-estructura-del-proyecto)
-11. [Cómo Ejecutar](#-cómo-ejecutar)
+> Users can say *"Take me to the pharmacy"* and the system guides them step by step while scanning the environment for obstacles.
 
 ---
 
-## 🎯 Descripción General
+## 📋 Table of Contents
 
-BlindNav es una aplicación Android diseñada para ayudar a personas ciegas o con baja visión a:
-
-1. **Navegar** hacia destinos usando GPS y brújula
-2. **Detectar obstáculos** en tiempo real usando la cámara y ML Kit
-3. **Recibir feedback auditivo** con prioridad inteligente (seguridad > navegación)
-
-### Características Clave
-
-- ✅ **Offline-first**: Detección de objetos sin conexión a internet
-- ✅ **Dual-task paralelo**: Safety y Navigation corren simultáneamente
-- ✅ **Audio inteligente**: Safety SIEMPRE interrumpe a Navigation
-- ✅ **Alto contraste**: UI diseñada para baja visión
-- ✅ **Comandos de voz**: "Llévame a X", "Ir a X", "Parar"
+1. [Overview](#-overview)
+2. [How It Works - Complete Workflow](#-how-it-works---complete-workflow)
+3. [System Architecture](#-system-architecture)
+4. [Data Flow](#-data-flow)
+5. [Core Components](#-core-components)
+6. [Priority Audio System](#-priority-audio-system)
+7. [Navigation System](#-navigation-system)
+8. [Obstacle Detection (Safety)](#-obstacle-detection-safety)
+9. [Voice Commands](#-voice-commands)
+10. [Required Permissions](#-required-permissions)
+11. [Project Structure](#-project-structure)
+12. [How to Run](#-how-to-run)
 
 ---
 
-## 🏗️ Arquitectura del Sistema
+## 🎯 Overview
+
+BlindNav is an Android application designed to help blind or low-vision people to:
+
+1. **Navigate** to destinations using GPS and compass
+2. **Detect obstacles** in real-time using camera and ML Kit
+3. **Receive audio feedback** with intelligent priority (safety > navigation)
+
+### Key Features
+
+- ✅ **Offline-first**: Object detection without internet connection
+- ✅ **Dual parallel tasks**: Safety and Navigation run simultaneously
+- ✅ **Intelligent audio**: Safety ALWAYS interrupts Navigation
+- ✅ **High contrast**: UI designed for low vision
+- ✅ **Voice commands**: "Take me to X", "Go to X", "Stop"
+
+---
+
+## 🔍 How It Works - Complete Workflow
+
+### Real-World Usage Scenario
+
+Let's walk through a complete example of how a blind user would use BlindNav to navigate to a pharmacy:
+
+#### **Phase 1: Initialization (App Launch)**
+
+```
+User opens app
+    ↓
+System performs startup sequence:
+    ├─ Initialize Camera (rear-facing, 30 FPS)
+    ├─ Load ML Kit model (offline object detection)
+    ├─ Initialize GPS client
+    ├─ Activate compass sensors
+    ├─ Initialize Text-to-Speech engine
+    └─ Start voice recognition listener
+    ↓
+TTS announces: "BlindNav ready. Say 'Take me to' followed by a destination."
+```
+
+#### **Phase 2: Voice Command & Route Planning**
+
+```
+User says: "Take me to the pharmacy"
+    ↓
+VoiceCommander captures and processes audio:
+    ├─ Speech-to-text conversion
+    ├─ Pattern matching: "take me to [destination]"
+    └─ Extract destination: "pharmacy"
+    ↓
+MockRouteProvider generates route:
+    ├─ Current GPS location: (41.3851°, 2.1734°)
+    ├─ Destination coordinates: (41.3860°, 2.1745°)
+    └─ Generate waypoints:
+        • Point 1: Start (0m)
+        • Point 2: Turn right in 50m
+        • Point 3: Continue straight 80m
+        • Point 4: Pharmacy entrance (130m total)
+    ↓
+TTS confirms: "Route calculated. 130 meters to pharmacy. Starting navigation."
+```
+
+#### **Phase 3: Active Navigation (Dual System)**
+
+Now the app runs **two parallel systems** simultaneously:
+
+**🟢 SYSTEM A: Navigation Loop (runs every 2 seconds)**
+
+```
+GPS Update (Location: 41.3851°, 2.1734°)
+    ↓
+NavigationManager calculations:
+    ├─ Distance to next waypoint: 48 meters
+    ├─ Compass heading: 85° (pointing East)
+    ├─ Required bearing: 45° (Northeast to waypoint)
+    ├─ Angular difference: 45° - 85° = -40°
+    └─ Generate instruction: "Turn 40 degrees left"
+    ↓
+Check: Is Safety currently speaking?
+    ├─ NO → Speak instruction (Priority: NAVIGATION)
+    └─ YES → Queue for later
+    ↓
+TTS (if allowed): "Turn 40 degrees left, then continue 48 meters"
+    ↓
+[Wait 2 seconds] → Next GPS update
+```
+
+**🔴 SYSTEM B: Safety Loop (runs every 100ms)**
+
+```
+Camera captures frame (1920x1080 pixels)
+    ↓
+ML Kit Object Detection (processes in ~30-50ms):
+    ├─ Detects: Person
+    ├─ Bounding box: (x:480, y:200, width:960, height:880)
+    ├─ Confidence: 89%
+    └─ Label: "person"
+    ↓
+SafetyAnalyzer calculations:
+    ├─ Box height ratio: 880/1080 = 0.81 (81% of frame)
+    ├─ Distance estimate: 0.81 > 0.7 → **VERY CLOSE** → 0.5 meters
+    ├─ Box center X: 480 + 960/2 = 960 pixels
+    ├─ Frame center X: 1920/2 = 960 pixels
+    ├─ Horizontal offset: |960 - 960| = 0 → **DEAD CENTER**
+    └─ Risk calculation:
+        • Large object (81% height) = +0.5 risk
+        • Very close (<2m) = +0.3 risk
+        • Centered (collision path) = +0.2 risk
+        • TOTAL RISK: 1.0 → **CRITICAL DANGER**
+    ↓
+Immediate Safety Response:
+    ├─ [1] INTERRUPT any ongoing TTS (stop navigation voice)
+    ├─ [2] Play alert tone (200ms beep)
+    ├─ [3] Vibrate phone (500ms, max intensity)
+    └─ [4] Speak (Priority: SAFETY - cannot be interrupted)
+    ↓
+TTS: "CAUTION! Person directly ahead at half a meter. Stop walking."
+    ↓
+[Wait 100ms] → Next camera frame
+```
+
+#### **Phase 4: Collision Avoidance & Recovery**
+
+```
+User hears safety warning and stops
+    ↓
+Next camera frame (100ms later):
+    ├─ Object detection: Same person detected
+    ├─ Bounding box: (x:500, y:220, width:880, height:820)
+    ├─ Height ratio: 820/1080 = 0.76 (still large)
+    ├─ Distance: ~0.6 meters (user stopped, didn't get closer)
+    ├─ Risk: Still CRITICAL
+    └─ Action: Safety stays silent (already warned, avoid repetition spam)
+    ↓
+User moves around the person (shifts body right)
+    ↓
+Camera frame updates (100ms later):
+    ├─ Object detection: Person now at left side
+    ├─ Bounding box: (x:100, y:300, width:400, height:600)
+    ├─ Height ratio: 600/1080 = 0.56 (medium)
+    ├─ Center offset: |250 - 960| = 710 pixels (NOT centered)
+    ├─ Risk: MEDIUM (0.5) → Not immediate danger
+    └─ Action: No announcement (user successfully avoided)
+    ↓
+Next frame (100ms later):
+    ├─ Object detection: Person now behind/out of frame
+    ├─ Risk: SAFE
+    └─ Action: Resume normal navigation
+    ↓
+Navigation system (which has been waiting) now speaks:
+TTS: "Continue straight 42 meters" (updated distance from GPS)
+```
+
+#### **Phase 5: Arrival**
+
+```
+GPS Update: Distance to destination = 5 meters
+    ↓
+NavigationManager detects proximity threshold
+    ↓
+TTS: "You are approaching the pharmacy. 5 meters ahead."
+    ↓
+GPS Update: Distance = 2 meters
+    ↓
+TTS: "Destination reached. Pharmacy entrance on your right."
+    ↓
+System stops navigation
+    ↓
+Safety system continues running (always active for obstacle detection)
+```
+
+### Key Technical Details
+
+**Why Two Separate Loops?**
+- **Navigation**: GPS updates are slow (2 seconds) but need accurate position
+- **Safety**: Camera must be fast (100ms = 10 FPS) to catch moving obstacles
+- Running them independently prevents GPS lag from slowing down safety detection
+
+**Priority System in Action:**
+```
+Timeline (example):
+00:00.000 - NAV speaks: "Turn left in 30—"
+00:00.800 - SAFETY detects danger (interrupts)
+00:00.850 - NAV speech STOPPED mid-sentence
+00:00.900 - SAFETY speaks: "CAUTION! Obstacle ahead!"
+00:03.500 - SAFETY finishes speaking
+00:03.600 - NAV resumes: "Turn left in 30 meters"
+```
+
+**Distance Estimation Logic:**
+```kotlin
+// No LiDAR sensor, so we estimate by object size in frame
+Object height = 81% of frame height
+    ↓
+Real-world logic:
+    • If person fills 80% of vertical space → They must be VERY close
+    • If person is only 10% of frame → They are far away
+    ↓
+Mapping:
+    • >70% height → 0.5m (critical)
+    • 50-70% → 1.5m (warning)
+    • 30-50% → 3.0m (caution)
+    • 10-30% → 5.0m (safe)
+    • <10% → 10m+ (irrelevant)
+```
+
+---
+
+## 🏗️ System Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -78,23 +269,23 @@ BlindNav es una aplicación Android diseñada para ayudar a personas ciegas o co
 
 ### Tecnologías Utilizadas
 
-| Componente | Tecnología |
-|------------|------------|
-| Lenguaje | Kotlin 1.9.20 |
-| Arquitectura | MVVM + Clean Architecture |
-| Visión | CameraX 1.3.0 |
-| ML Offline | ML Kit Object Detection 17.0.0 |
+| Component | Technology |
+|-----------|------------|
+| Language | Kotlin 1.9.20 |
+| Architecture | MVVM + Clean Architecture |
+| Vision | CameraX 1.3.0 |
+| Offline ML | ML Kit Object Detection 17.0.0 |
 | GPS | Google Play Services Location 21.0.1 |
-| Brújula | SensorManager (TYPE_ROTATION_VECTOR) |
-| Voz | SpeechRecognizer + TextToSpeech |
+| Compass | SensorManager (TYPE_ROTATION_VECTOR) |
+| Voice | SpeechRecognizer + TextToSpeech |
 | Async | Coroutines + Flow |
 | Testing | JUnit 4 + Mockito 5 |
 
 ---
 
-## 🔄 Flujo de Datos
+## 🔄 Data Flow
 
-### 1. Flujo de Safety (Detección de Obstáculos)
+### 1. Safety Flow (Obstacle Detection)
 
 ```
 Cámara → CameraSource → ML Kit → SafetyAnalyzer → PriorityAudioManager

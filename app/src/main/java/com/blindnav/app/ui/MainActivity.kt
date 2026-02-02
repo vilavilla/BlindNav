@@ -1,19 +1,18 @@
 package com.blindnav.app.ui
 
 import android.Manifest
-import android.animation.ObjectAnimator
-import android.animation.ValueAnimator
 import android.content.pm.PackageManager
-import android.graphics.Color
-import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.util.Log
 import android.view.View
 import android.view.WindowManager
-import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.Preview
+import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
@@ -24,89 +23,98 @@ import com.blindnav.app.data.repository.SafetyRepositoryImpl
 import com.blindnav.app.databinding.ActivityMainBinding
 import com.blindnav.app.domain.SafetyAnalyzer
 import com.blindnav.app.domain.model.HazardLevel
-import com.blindnav.app.domain.model.NavigationState
 import com.blindnav.app.domain.model.SafetyAnalysisResult
 import com.blindnav.app.domain.model.VoiceCommandResult
 import com.blindnav.app.domain.model.VoiceRecognizerState
-import com.blindnav.app.domain.navigation.MockRouteProvider
 import com.blindnav.app.domain.navigation.NavigationManager
 import com.blindnav.app.ui.audio.PriorityAudioManager
+import com.blindnav.app.ui.feedback.SonarFeedback
 import com.blindnav.app.ui.voice.VoiceCommander
+import com.blindnav.app.data.db.BlindNavDatabase
+import com.blindnav.app.data.db.entity.EventType
+import com.blindnav.app.data.sensors.LocationSensorManager
+import com.blindnav.app.domain.navigation.GuidedNavigationManager
+import com.blindnav.app.ui.recording.RouteRecorderViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 /**
  * MainActivity - Pantalla principal de BlindNav
  * 
- * ARQUITECTURA DE FUSIÓN SAFETY + NAVIGATION:
- * - Job 1 (Safety): Analiza frames de cámara → alertas de obstáculos (PRIORIDAD ALTA)
- * - Job 2 (Navigation): GPS + Brújula → instrucciones de giro (PRIORIDAD MEDIA)
- * - PriorityAudioManager resuelve conflictos automáticamente
+ * PRIORIDAD: Arreglar pantalla negra con gestión correcta de cámara.
+ * 
+ * CAPAS DE UI:
+ * 1. viewFinder (PreviewView) - Cámara en vivo
+ * 2. boundingBoxOverlay - Detección de obstáculos
+ * 3. hudCard - Información GPS/Brújula
+ * 4. controlsContainer - Botones flotantes
  */
 class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val TAG = "MainActivity"
+        private val REQUIRED_PERMISSIONS = arrayOf(
+            Manifest.permission.CAMERA,
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION,
+            Manifest.permission.RECORD_AUDIO
+        )
     }
 
     // ============================================
-    // PROPIEDADES
+    // BINDING Y COMPONENTES
     // ============================================
     
     private lateinit var binding: ActivityMainBinding
     private lateinit var viewModel: MainViewModel
+    
+    // CameraX
+    private var cameraProvider: ProcessCameraProvider? = null
+    private lateinit var cameraExecutor: ExecutorService
     
     // Componentes del sistema
     private lateinit var cameraSource: CameraSource
     private lateinit var navigationManager: NavigationManager
     private lateinit var audioManager: PriorityAudioManager
     private lateinit var voiceCommander: VoiceCommander
+    private lateinit var sonarFeedback: SonarFeedback
     
-    // Jobs de corrutinas para procesos paralelos
+    // Tactical Navigation
+    private lateinit var locationSensorManager: LocationSensorManager
+    private lateinit var guidedNavigationManager: GuidedNavigationManager
+    private lateinit var routeRecorderViewModel: RouteRecorderViewModel
+    private lateinit var database: BlindNavDatabase
+    
+    // Jobs
     private var safetyJob: Job? = null
     private var navigationJob: Job? = null
+    private var sensorUpdateJob: Job? = null
     
-    // Animador para flash de peligro
-    private var hazardAnimator: ObjectAnimator? = null
-    
-    // Estado de navegación GPS activa
-    private var isGpsNavigating = false
+    // Estado
+    private var isRecordingRoute = false
+    private var isSonarEnabled = false
 
     // ============================================
-    // LAUNCHERS DE PERMISOS
+    // PERMISSION LAUNCHER (AGRESIVO)
     // ============================================
     
-    private val cameraPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        if (isGranted) {
-            initializeCamera()
-        } else {
-            Toast.makeText(this, getString(R.string.camera_permission_required), Toast.LENGTH_LONG).show()
-        }
-    }
-    
-    private val locationPermissionLauncher = registerForActivityResult(
+    private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
-        val fineGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
-        val coarseGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        val allGranted = permissions.all { it.value }
         
-        if (fineGranted || coarseGranted) {
-            Log.d(TAG, "Permisos de ubicación concedidos")
+        if (allGranted) {
+            Log.d(TAG, "✅ Todos los permisos concedidos")
+            onAllPermissionsGranted()
         } else {
-            audioManager.speakSystem("Permisos de ubicación necesarios para navegación GPS")
-        }
-    }
-    
-    private val audioPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        if (isGranted) {
-            voiceCommander.startListening()
-        } else {
-            audioManager.speakSystem("Permiso de micrófono necesario para comandos de voz")
+            val denied = permissions.filter { !it.value }.keys
+            Log.w(TAG, "❌ Permisos denegados: $denied")
+            
+            // Mostrar diálogo explicativo
+            showPermissionRationale(denied)
         }
     }
 
@@ -116,33 +124,137 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Log.d(TAG, "🚀 onCreate - Iniciando BlindNav")
         
+        // Pantalla completa
         setupFullscreenMode()
         
+        // Inflar layout
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        
+        // Executor para cámara
+        cameraExecutor = Executors.newSingleThreadExecutor()
+        
+        // Inicializar componentes básicos (sin cámara)
+        initializeBasicComponents()
+        
+        // Setup UI listeners
+        setupUIListeners()
+        
+        // PRIORIDAD: Verificar permisos ANTES de todo
+        checkAndRequestPermissions()
+    }
 
-        initializeDependencies()
-        setupUI()
-        checkPermissions()
-        observeState()
-        observeNavigation()
-        observeVoiceCommands()
+    override fun onResume() {
+        super.onResume()
+        Log.d(TAG, "📱 onResume")
+        
+        // Reiniciar sensores si tenemos permisos
+        if (hasLocationPermission()) {
+            startSensorUpdates()
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        Log.d(TAG, "⏸ onPause")
+        sensorUpdateJob?.cancel()
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        Log.d(TAG, "💀 onDestroy")
         
         // Cancelar jobs
         safetyJob?.cancel()
         navigationJob?.cancel()
+        sensorUpdateJob?.cancel()
         
         // Liberar recursos
-        hazardAnimator?.cancel()
-        audioManager.release()
-        navigationManager.release()
-        voiceCommander.release()
-        cameraSource.stopCamera()
+        cameraExecutor.shutdown()
+        if (::audioManager.isInitialized) audioManager.release()
+        if (::navigationManager.isInitialized) navigationManager.release()
+        if (::voiceCommander.isInitialized) voiceCommander.release()
+        if (::sonarFeedback.isInitialized) sonarFeedback.release()
+        if (::cameraSource.isInitialized) cameraSource.stopCamera()
+    }
+
+    // ============================================
+    // PERMISOS (AGRESIVO)
+    // ============================================
+
+    private fun checkAndRequestPermissions() {
+        val missingPermissions = REQUIRED_PERMISSIONS.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+        
+        if (missingPermissions.isEmpty()) {
+            Log.d(TAG, "✅ Todos los permisos ya concedidos")
+            onAllPermissionsGranted()
+        } else {
+            Log.d(TAG, "🔐 Solicitando permisos: $missingPermissions")
+            permissionLauncher.launch(missingPermissions.toTypedArray())
+        }
+    }
+
+    private fun showPermissionRationale(deniedPermissions: Set<String>) {
+        val message = buildString {
+            append("BlindNav necesita los siguientes permisos para funcionar:\n\n")
+            
+            if (Manifest.permission.CAMERA in deniedPermissions) {
+                append("📷 CÁMARA: Detectar obstáculos\n")
+            }
+            if (Manifest.permission.ACCESS_FINE_LOCATION in deniedPermissions ||
+                Manifest.permission.ACCESS_COARSE_LOCATION in deniedPermissions) {
+                append("📍 UBICACIÓN: Navegación GPS\n")
+            }
+            if (Manifest.permission.RECORD_AUDIO in deniedPermissions) {
+                append("🎤 MICRÓFONO: Comandos de voz\n")
+            }
+            
+            append("\n¿Quieres concederlos ahora?")
+        }
+        
+        AlertDialog.Builder(this)
+            .setTitle("Permisos necesarios")
+            .setMessage(message)
+            .setPositiveButton("Reintentar") { _, _ ->
+                permissionLauncher.launch(REQUIRED_PERMISSIONS)
+            }
+            .setNegativeButton("Salir") { _, _ ->
+                Toast.makeText(this, "La app no puede funcionar sin permisos", Toast.LENGTH_LONG).show()
+                finish()
+            }
+            .setCancelable(false)
+            .show()
+    }
+
+    private fun onAllPermissionsGranted() {
+        Log.d(TAG, "🎉 Permisos OK - Iniciando cámara y sensores")
+        
+        // Anunciar inicio
+        audioManager.speakSystem("BlindNav iniciado. Cámara y sensores activos.")
+        
+        // Iniciar cámara
+        startCamera()
+        
+        // Iniciar sensores de ubicación
+        startSensorUpdates()
+        
+        // Observar estado
+        observeState()
+        observeVoiceCommands()
+    }
+
+    private fun hasCameraPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == 
+            PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun hasLocationPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == 
+            PackageManager.PERMISSION_GRANTED
     }
 
     // ============================================
@@ -160,9 +272,14 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    private fun initializeDependencies() {
-        // Audio Manager (con prioridades)
+    private fun initializeBasicComponents() {
+        Log.d(TAG, "⚙️ Inicializando componentes básicos")
+        
+        // Audio Manager
         audioManager = PriorityAudioManager(this)
+        
+        // Sonar Feedback
+        sonarFeedback = SonarFeedback()
         
         // Safety System
         val safetyAnalyzer = SafetyAnalyzer()
@@ -176,259 +293,263 @@ class MainActivity : AppCompatActivity() {
         // Voice Commander
         voiceCommander = VoiceCommander(this)
         voiceCommander.initialize()
-    }
-
-    private fun setupUI() {
-        // Botón principal (Safety ON/OFF)
-        binding.btnToggleNavigation.setOnClickListener {
-            viewModel.toggleNavigation()
-            it.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
-        }
         
-        // Botón de voz
-        binding.btnVoice.setOnClickListener {
-            it.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
-            startVoiceRecognition()
-        }
+        // Database & Location
+        database = BlindNavDatabase.getInstance(this)
+        locationSensorManager = LocationSensorManager(this)
         
-        // Estado inicial
-        updateHazardBadge(HazardLevel.SAFE)
-        binding.navInfoContainer.visibility = View.GONE
-    }
-
-    private fun checkPermissions() {
-        // Cámara
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) 
-            == PackageManager.PERMISSION_GRANTED) {
-            initializeCamera()
-        } else {
-            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-        }
+        // Guided Navigation
+        guidedNavigationManager = GuidedNavigationManager(
+            context = this,
+            locationSensorManager = locationSensorManager,
+            audioManager = audioManager
+        )
         
-        // Ubicación
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) 
-            != PackageManager.PERMISSION_GRANTED) {
-            locationPermissionLauncher.launch(arrayOf(
-                Manifest.permission.ACCESS_FINE_LOCATION,
-                Manifest.permission.ACCESS_COARSE_LOCATION
-            ))
-        }
-    }
-
-    private fun initializeCamera() {
-        lifecycleScope.launch {
-            cameraSource.startCamera(this@MainActivity, binding.previewView)
-            audioManager.speakSystem("BlindNav iniciado. Pulsa el micrófono y di tu destino.")
-        }
+        // Route Recorder
+        routeRecorderViewModel = RouteRecorderViewModel(
+            routeDao = database.routeDao(),
+            checkpointDao = database.checkpointDao(),
+            pathPointDao = database.pathPointDao(),
+            mapEventDao = database.mapEventDao(),
+            locationSensorManager = locationSensorManager
+        )
     }
 
     // ============================================
-    // OBSERVERS - SAFETY SYSTEM
+    // CÁMARA (CameraX con PreviewView)
     // ============================================
 
-    private fun observeState() {
-        lifecycleScope.launch {
+    private fun startCamera() {
+        Log.d(TAG, "📷 Iniciando cámara CameraX")
+        
+        val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
+        
+        cameraProviderFuture.addListener({
+            try {
+                cameraProvider = cameraProviderFuture.get()
+                bindCameraUseCases()
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Error al obtener cameraProvider", e)
+                audioManager.speakSystem("Error al iniciar cámara")
+            }
+        }, ContextCompat.getMainExecutor(this))
+    }
+
+    private fun bindCameraUseCases() {
+        val cameraProvider = cameraProvider ?: return
+        
+        Log.d(TAG, "🔗 Vinculando casos de uso de cámara")
+        
+        // Preview use case - VINCULAR AL viewFinder
+        val preview = Preview.Builder()
+            .build()
+            .also { 
+                it.setSurfaceProvider(binding.viewFinder.surfaceProvider)
+                Log.d(TAG, "✅ Preview vinculado a viewFinder")
+            }
+        
+        // Seleccionar cámara trasera
+        val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+        
+        try {
+            // Desvincular casos previos
+            cameraProvider.unbindAll()
+            
+            // Vincular al lifecycle
+            cameraProvider.bindToLifecycle(
+                this,
+                cameraSelector,
+                preview
+            )
+            
+            Log.d(TAG, "✅ Cámara vinculada correctamente")
+            
+            // También iniciar el análisis de safety
+            startSafetyAnalysis()
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Error al vincular cámara", e)
+        }
+    }
+
+    private fun startSafetyAnalysis() {
+        Log.d(TAG, "🔍 Iniciando análisis de seguridad")
+        
+        safetyJob = lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                // Job 1: UI State
-                launch {
-                    viewModel.uiState.collectLatest { state ->
-                        updateUI(state)
-                    }
-                }
-                
-                // Job 2: Safety Analysis → Audio SAFETY
-                safetyJob = launch {
-                    viewModel.safetyAnalysisFlow.collectLatest { result ->
-                        updateAnalysisUI(result)
-                        
-                        // Emitir alertas de seguridad (PRIORIDAD ALTA)
-                        if (viewModel.uiState.value.isNavigating) {
-                            handleSafetyAlert(result)
-                        }
+                viewModel.safetyAnalysisFlow.collectLatest { result ->
+                    updateAnalysisUI(result)
+                    
+                    // Actualizar sonar si está activo
+                    if (isSonarEnabled && result.hazardLevel != HazardLevel.SAFE) {
+                        val distance = estimateDistance(result)
+                        sonarFeedback.updateProximity(distance)
                     }
                 }
             }
         }
     }
 
-    private fun handleSafetyAlert(result: SafetyAnalysisResult) {
-        when (result.hazardLevel) {
-            HazardLevel.CRITICAL -> {
-                audioManager.alertSafety(HazardLevel.CRITICAL, "¡Peligro! Obstáculo muy cerca.")
-            }
-            HazardLevel.WARNING -> {
-                audioManager.alertSafety(HazardLevel.WARNING)
-            }
-            HazardLevel.SAFE -> {
-                // No hacer nada
-            }
+    private fun estimateDistance(result: SafetyAnalysisResult): Float {
+        return when (result.hazardLevel) {
+            HazardLevel.CRITICAL -> 0.5f
+            HazardLevel.WARNING -> 2.0f
+            HazardLevel.SAFE -> 10.0f
         }
     }
 
     // ============================================
-    // OBSERVERS - NAVIGATION SYSTEM
+    // SENSORES (GPS + Brújula)
     // ============================================
 
-    private fun observeNavigation() {
-        lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) {
-                // Job 3: Navigation State → UI
-                launch {
-                    navigationManager.navigationState.collectLatest { navState ->
-                        updateNavigationUI(navState)
-                    }
-                }
-                
-                // Job 4: Navigation Instructions → Audio NAVIGATION
-                navigationJob = launch {
-                    navigationManager.spokenInstructions.collectLatest { instruction ->
-                        audioManager.speakNavigation(instruction)
-                    }
-                }
-            }
-        }
-    }
-
-    private fun updateNavigationUI(navState: NavigationState) {
-        if (navState.isNavigating) {
-            binding.navInfoContainer.visibility = View.VISIBLE
-            
-            binding.tvNavDestination.text = "Navegando a: ${navState.currentRoute?.destination ?: "---"}"
-            binding.tvNavDistance.text = "Distancia: ${navState.distanceToNextPoint.toInt()} m"
-            
-            val directionText = when {
-                navState.isOnCourse -> "✓ Dirección correcta"
-                navState.bearingDifference > 0 -> "→ Gira a la derecha (${navState.bearingDifference.toInt()}°)"
-                else -> "← Gira a la izquierda (${(-navState.bearingDifference).toInt()}°)"
-            }
-            binding.tvNavBearing.text = directionText
-            
-            isGpsNavigating = true
-        } else {
-            binding.navInfoContainer.visibility = View.GONE
-            isGpsNavigating = false
-        }
-    }
-
-    // ============================================
-    // OBSERVERS - VOICE COMMANDS
-    // ============================================
-
-    private fun observeVoiceCommands() {
-        lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) {
-                // Estado del reconocedor
-                launch {
-                    voiceCommander.state.collectLatest { state ->
-                        updateVoiceUI(state)
-                    }
-                }
-                
-                // Comandos reconocidos
-                launch {
-                    voiceCommander.lastCommand.collectLatest { command ->
-                        command?.let { handleVoiceCommand(it) }
-                    }
-                }
-            }
-        }
-    }
-
-    private fun updateVoiceUI(state: VoiceRecognizerState) {
-        when (state) {
-            VoiceRecognizerState.LISTENING -> {
-                binding.tvVoiceStatus.visibility = View.VISIBLE
-                binding.tvVoiceStatus.text = "🎤 Escuchando..."
-                binding.btnVoice.setBackgroundColor(Color.parseColor("#E91E63"))
-            }
-            VoiceRecognizerState.PROCESSING -> {
-                binding.tvVoiceStatus.text = "⏳ Procesando..."
-            }
-            else -> {
-                binding.tvVoiceStatus.visibility = View.GONE
-                binding.btnVoice.setBackgroundColor(Color.parseColor("#7B1FA2"))
-            }
-        }
-    }
-
-    private fun handleVoiceCommand(command: VoiceCommandResult) {
-        Log.d(TAG, "Comando recibido: $command")
+    private fun startSensorUpdates() {
+        Log.d(TAG, "🧭 Iniciando actualizaciones de sensores")
         
-        when (command) {
-            is VoiceCommandResult.NavigateTo -> {
-                startGpsNavigation(command.destination)
-            }
-            is VoiceCommandResult.StopNavigation -> {
-                stopGpsNavigation()
-            }
-            is VoiceCommandResult.RepeatInstruction -> {
-                audioManager.speakNavigation("Repitiendo: " + 
-                    navigationManager.navigationState.value.lastInstruction.ifEmpty { "Sin instrucciones" })
-            }
-            is VoiceCommandResult.WhereAmI -> {
-                announceCurrentLocation()
-            }
-            is VoiceCommandResult.Help -> {
-                audioManager.speakSystem(voiceCommander.getHelpText())
-            }
-            is VoiceCommandResult.Unknown -> {
-                audioManager.speakSystem("No entendí el comando: ${command.text}")
-            }
-            is VoiceCommandResult.Error -> {
-                audioManager.speakSystem("Error: ${command.message}")
+        sensorUpdateJob = lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                locationSensorManager.orientationFlow.collectLatest { orientation ->
+                    updateHUD(orientation)
+                }
             }
         }
     }
 
-    // ============================================
-    // VOICE RECOGNITION
-    // ============================================
-
-    private fun startVoiceRecognition() {
-        if (voiceCommander.hasAudioPermission()) {
-            voiceCommander.startListening()
-        } else {
-            audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-        }
-    }
-
-    // ============================================
-    // GPS NAVIGATION
-    // ============================================
-
-    private fun startGpsNavigation(destination: String) {
-        val route = MockRouteProvider.findRoute(destination)
+    private fun updateHUD(orientation: com.blindnav.app.data.sensors.UserOrientation) {
+        // Actualizar GPS
+        binding.tvGpsCoordinates.text = String.format(
+            "%.5f, %.5f", 
+            orientation.latitude, 
+            orientation.longitude
+        )
+        binding.tvGpsAccuracy.text = "±${orientation.accuracy.toInt()}m"
         
-        if (route != null) {
-            audioManager.speakSystem("Calculando ruta a $destination.")
-            navigationManager.startNavigation(route)
-            
-            // Activar también el sistema de Safety si no está activo
-            if (!viewModel.uiState.value.isNavigating) {
-                viewModel.toggleNavigation()
-            }
-        } else {
-            audioManager.speakSystem("No encontré ruta a $destination. Destinos disponibles: " +
-                MockRouteProvider.getAvailableDestinations().joinToString(", "))
+        // Actualizar brújula
+        val cardinalDirection = getCardinalDirection(orientation.bearing)
+        binding.tvCompassDirection.text = "$cardinalDirection (${orientation.bearing.toInt()}°)"
+    }
+
+    private fun getCardinalDirection(bearing: Float): String {
+        return when {
+            bearing >= 337.5 || bearing < 22.5 -> "N"
+            bearing >= 22.5 && bearing < 67.5 -> "NE"
+            bearing >= 67.5 && bearing < 112.5 -> "E"
+            bearing >= 112.5 && bearing < 157.5 -> "SE"
+            bearing >= 157.5 && bearing < 202.5 -> "S"
+            bearing >= 202.5 && bearing < 247.5 -> "SO"
+            bearing >= 247.5 && bearing < 292.5 -> "O"
+            else -> "NO"
         }
     }
 
-    private fun stopGpsNavigation() {
-        navigationManager.stopNavigation()
-        audioManager.speakSystem("Navegación detenida.")
-    }
+    // ============================================
+    // UI LISTENERS
+    // ============================================
 
-    private fun announceCurrentLocation() {
-        lifecycleScope.launch {
-            val location = navigationManager.getLastLocation()
-            if (location != null) {
-                audioManager.speakSystem(
-                    "Tu ubicación actual: latitud ${String.format("%.4f", location.latitude)}, " +
-                    "longitud ${String.format("%.4f", location.longitude)}."
-                )
+    private fun setupUIListeners() {
+        // Switch Sonar
+        binding.switchSonar.setOnCheckedChangeListener { _, isChecked ->
+            isSonarEnabled = isChecked
+            if (isChecked) {
+                sonarFeedback.start()
+                audioManager.speakSystem("Sonar activado")
             } else {
-                audioManager.speakSystem("No puedo obtener tu ubicación actual.")
+                sonarFeedback.stop()
+                audioManager.speakSystem("Sonar desactivado")
             }
+        }
+        
+        // Botón Grabar Ruta
+        binding.btnRecordRoute.setOnClickListener {
+            if (!isRecordingRoute) {
+                startRouteRecording()
+            } else {
+                stopRouteRecording()
+            }
+        }
+        
+        // FAB Marcar Evento
+        binding.fabMarkEvent.setOnClickListener {
+            if (isRecordingRoute) {
+                showEventTypeDialog()
+            } else {
+                audioManager.speakSystem("Primero inicia la grabación de ruta")
+            }
+        }
+        
+        // Botones del panel de grabación
+        binding.btnReportCrossing.setOnClickListener {
+            reportEvent(EventType.CROSSING)
+        }
+        
+        binding.btnReportObstacle.setOnClickListener {
+            reportEvent(EventType.OBSTACLE_TEMPORARY)
+        }
+        
+        binding.btnReportTurn.setOnClickListener {
+            reportEvent(EventType.TURN)
+        }
+        
+        binding.btnReportInfo.setOnClickListener {
+            reportEvent(EventType.INFO)
+        }
+        
+        // Botón Parar Grabación
+        binding.btnStopRecording.setOnClickListener {
+            stopRouteRecording()
+        }
+    }
+
+    // ============================================
+    // GRABACIÓN DE RUTA
+    // ============================================
+
+    private fun startRouteRecording() {
+        val routeName = "Ruta ${java.text.SimpleDateFormat("dd-MMM HH:mm", 
+            java.util.Locale.getDefault()).format(java.util.Date())}"
+        
+        if (routeRecorderViewModel.startRecording(routeName)) {
+            isRecordingRoute = true
+            
+            // Mostrar panel de grabación
+            binding.recordingPanel.visibility = View.VISIBLE
+            binding.btnRecordRoute.text = "⏹ PARAR"
+            binding.btnRecordRoute.setBackgroundColor(getColor(android.R.color.holo_red_dark))
+            
+            audioManager.speakNavigation("Grabación iniciada. Usa los botones para marcar eventos.")
+        } else {
+            audioManager.speakSystem("Error al iniciar grabación")
+        }
+    }
+
+    private fun stopRouteRecording() {
+        routeRecorderViewModel.stopRecording()
+        isRecordingRoute = false
+        
+        // Ocultar panel
+        binding.recordingPanel.visibility = View.GONE
+        binding.btnRecordRoute.text = "🎬 GRABAR"
+        binding.btnRecordRoute.setBackgroundColor(getColor(android.R.color.holo_red_dark))
+        
+        audioManager.speakNavigation("Grabación finalizada")
+    }
+
+    private fun showEventTypeDialog() {
+        val eventTypes = EventType.entries.toTypedArray()
+        val names = eventTypes.map { "${it.emoji} ${it.displayName}" }.toTypedArray()
+        
+        AlertDialog.Builder(this)
+            .setTitle("Tipo de evento")
+            .setItems(names) { _, which ->
+                reportEvent(eventTypes[which])
+            }
+            .show()
+    }
+
+    private fun reportEvent(type: EventType, description: String = "") {
+        if (routeRecorderViewModel.reportEvent(type, description)) {
+            audioManager.speakNavigation("${type.displayName} marcado")
+        } else {
+            audioManager.speakSystem("Error. Esperando GPS.")
         }
     }
 
@@ -437,105 +558,126 @@ class MainActivity : AppCompatActivity() {
     // ============================================
 
     private fun updateAnalysisUI(result: SafetyAnalysisResult) {
+        // Actualizar overlay de detección
         binding.boundingBoxOverlay.updateObstacles(
             result.obstacles,
             result.hazardLevel,
             640, 480
         )
         
-        updateHazardBadge(result.hazardLevel)
-        
-        if (result.hazardLevel == HazardLevel.CRITICAL) {
-            showCriticalFlash()
-        } else {
-            hideCriticalFlash()
-        }
-    }
-
-    private fun updateUI(state: MainUiState) {
-        // Texto de estado
-        binding.tvStatus.text = when {
-            !state.isNavigating -> "LISTO PARA INICIAR"
-            state.currentHazardLevel == HazardLevel.CRITICAL -> "¡¡ PELIGRO !!"
-            state.currentHazardLevel == HazardLevel.WARNING -> "PRECAUCIÓN"
-            isGpsNavigating -> "NAVEGANDO"
-            else -> "ESCANEANDO"
-        }
-        
-        binding.tvHazardLevel.text = state.currentHazardLevel.name
-        
-        val (textColor, statusColor) = when (state.currentHazardLevel) {
-            HazardLevel.SAFE -> Pair(Color.parseColor("#4CAF50"), Color.parseColor("#FFFFFF"))
-            HazardLevel.WARNING -> Pair(Color.parseColor("#FF9800"), Color.parseColor("#FFE082"))
-            HazardLevel.CRITICAL -> Pair(Color.parseColor("#F44336"), Color.parseColor("#FFCDD2"))
-        }
-        
-        binding.tvHazardLevel.setTextColor(textColor)
-        binding.tvStatus.setTextColor(statusColor)
-        
-        val obstacleCount = state.lastAnalysisResult?.obstacles?.size ?: 0
-        val latency = state.lastAnalysisResult?.processingTimeMs ?: 0
-        binding.tvDebugInfo.text = String.format(
-            "%.1f FPS | %d obj | %d ms | GPS: %s",
-            state.processingFps,
-            obstacleCount,
-            latency,
-            if (isGpsNavigating) "ON" else "OFF"
-        )
-        
-        if (state.isNavigating) {
-            binding.btnToggleNavigation.text = "⏹ DETENER"
-            binding.btnToggleNavigation.setBackgroundColor(Color.parseColor("#C62828"))
-        } else {
-            binding.btnToggleNavigation.text = "▶ INICIAR"
-            binding.btnToggleNavigation.setBackgroundColor(Color.parseColor("#1565C0"))
-        }
-        
-        if (!state.isNavigating) {
-            binding.boundingBoxOverlay.clear()
-            hideCriticalFlash()
-        }
-    }
-
-    private fun updateHazardBadge(level: HazardLevel) {
-        val (bgColor, text) = when (level) {
-            HazardLevel.SAFE -> Pair(Color.parseColor("#4CAF50"), "SAFE")
-            HazardLevel.WARNING -> Pair(Color.parseColor("#FF9800"), "WARNING")
-            HazardLevel.CRITICAL -> Pair(Color.parseColor("#F44336"), "CRITICAL")
-        }
-        
-        binding.tvHazardIndicator.text = text
-        
-        val background = binding.tvHazardIndicator.background
-        if (background is GradientDrawable) {
-            background.setColor(bgColor)
-        } else {
-            val newBackground = GradientDrawable().apply {
-                setColor(bgColor)
-                cornerRadius = 12f * resources.displayMetrics.density
+        // Actualizar indicador de estado
+        when (result.hazardLevel) {
+            HazardLevel.CRITICAL -> {
+                binding.tvSystemStatus.text = "🔴 ¡PELIGRO!"
+                binding.tvSystemStatus.setTextColor(getColor(android.R.color.holo_red_light))
+                binding.tvHazardIndicator.visibility = View.VISIBLE
+                binding.tvHazardIndicator.text = "⚠️ ¡OBSTÁCULO CERCANO!"
             }
-            binding.tvHazardIndicator.background = newBackground
-        }
-    }
-
-    private fun showCriticalFlash() {
-        binding.hazardOverlay.visibility = View.VISIBLE
-        
-        if (hazardAnimator == null || !hazardAnimator!!.isRunning) {
-            hazardAnimator = ObjectAnimator.ofFloat(binding.hazardOverlay, "alpha", 0f, 0.4f).apply {
-                duration = 200
-                repeatCount = ValueAnimator.INFINITE
-                repeatMode = ValueAnimator.REVERSE
-                interpolator = AccelerateDecelerateInterpolator()
-                start()
+            HazardLevel.WARNING -> {
+                binding.tvSystemStatus.text = "🟡 PRECAUCIÓN"
+                binding.tvSystemStatus.setTextColor(getColor(android.R.color.holo_orange_light))
+                binding.tvHazardIndicator.visibility = View.GONE
+            }
+            HazardLevel.SAFE -> {
+                binding.tvSystemStatus.text = "🟢 SEGURO"
+                binding.tvSystemStatus.setTextColor(getColor(android.R.color.holo_green_light))
+                binding.tvHazardIndicator.visibility = View.GONE
             }
         }
     }
 
-    private fun hideCriticalFlash() {
-        hazardAnimator?.cancel()
-        hazardAnimator = null
-        binding.hazardOverlay.visibility = View.GONE
-        binding.hazardOverlay.alpha = 0f
+    // ============================================
+    // OBSERVADORES
+    // ============================================
+
+    private fun observeState() {
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.uiState.collectLatest { state ->
+                    // Log para debug
+                    Log.d(TAG, "Estado: navigating=${state.isNavigating}, hazard=${state.currentHazardLevel}")
+                }
+            }
+        }
+    }
+
+    private fun observeVoiceCommands() {
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                voiceCommander.lastCommand.collectLatest { result ->
+                    result?.let { handleVoiceCommand(it) }
+                }
+            }
+        }
+        
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                voiceCommander.state.collectLatest { state ->
+                    updateVoiceIndicator(state)
+                }
+            }
+        }
+    }
+
+    private fun handleVoiceCommand(result: VoiceCommandResult) {
+        Log.d(TAG, "🎤 Comando de voz: $result")
+        
+        when (result) {
+            is VoiceCommandResult.NavigateTo -> {
+                audioManager.speakSystem("Navegando a ${result.destination}")
+            }
+            is VoiceCommandResult.StopNavigation -> {
+                if (isRecordingRoute) stopRouteRecording()
+            }
+            is VoiceCommandResult.RepeatInstruction -> {
+                audioManager.speakSystem("Repitiendo instrucción")
+            }
+            is VoiceCommandResult.WhereAmI -> {
+                // Use simple response - can't directly access SharedFlow value
+                audioManager.speakSystem("Consulta tu ubicación en el HUD superior")
+            }
+            is VoiceCommandResult.Help -> {
+                audioManager.speakSystem("Comandos disponibles: grabar, cruce, obstáculo, giro, sonar")
+            }
+            is VoiceCommandResult.Unknown -> {
+                // Procesar texto libre
+                val text = result.text.lowercase()
+                when {
+                    text.contains("grabar") -> {
+                        if (!isRecordingRoute) startRouteRecording() else stopRouteRecording()
+                    }
+                    text.contains("cruce") || text.contains("cebra") -> {
+                        reportEvent(EventType.CROSSING)
+                    }
+                    text.contains("obstáculo") -> {
+                        reportEvent(EventType.OBSTACLE_TEMPORARY)
+                    }
+                    text.contains("giro") -> {
+                        reportEvent(EventType.TURN)
+                    }
+                    text.contains("sonar") -> {
+                        binding.switchSonar.isChecked = !binding.switchSonar.isChecked
+                    }
+                }
+            }
+            is VoiceCommandResult.Error -> {
+                Log.w(TAG, "Error de voz: ${result.message}")
+            }
+        }
+    }
+
+    private fun updateVoiceIndicator(state: VoiceRecognizerState) {
+        when (state) {
+            VoiceRecognizerState.LISTENING -> {
+                binding.voiceIndicator.visibility = View.VISIBLE
+                binding.tvVoiceStatus.text = "🎤 Escuchando..."
+            }
+            VoiceRecognizerState.PROCESSING -> {
+                binding.tvVoiceStatus.text = "⏳ Procesando..."
+            }
+            else -> {
+                binding.voiceIndicator.visibility = View.GONE
+            }
+        }
     }
 }

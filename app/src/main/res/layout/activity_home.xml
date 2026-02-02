@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    HomeActivity - Pantalla Principal de BlindNav GPS Navigator
+    Diseño: Mapa de pantalla completa con controles flotantes
+-->
+<FrameLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/rootLayout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context=".ui.home.HomeActivity">
+
+    <!-- ============================================ -->
+    <!-- MAPA OSM: Pantalla Completa con MyLocation -->
+    <!-- ============================================ -->
+    <org.osmdroid.views.MapView
+        android:id="@+id/mapView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- ============================================ -->
+    <!-- BUSCADOR FLOTANTE: Arriba -->
+    <!-- ============================================ -->
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/searchCard"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_margin="16dp"
+        android:layout_gravity="top"
+        app:cardBackgroundColor="#E6000000"
+        app:cardCornerRadius="28dp"
+        app:cardElevation="8dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:padding="12dp"
+            android:gravity="center_vertical">
+
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/searchInputLayout"
+                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.Dense"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:hint="Buscar lugar (ej: Cítara Fraga)"
+                app:hintTextColor="#AAAAAA"
+                app:boxStrokeColor="#4CAF50"
+                app:boxBackgroundColor="#00000000">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/etSearch"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp"
+                    android:imeOptions="actionSearch"
+                    android:inputType="text"
+                    android:maxLines="1" />
+
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <com.google.android.material.floatingactionbutton.FloatingActionButton
+                android:id="@+id/fabVoiceSearch"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:contentDescription="Búsqueda por voz"
+                app:backgroundTint="#4CAF50"
+                app:tint="#FFFFFF"
+                app:fabSize="mini"
+                android:src="@android:drawable/ic_btn_speak_now" />
+
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+
+    <!-- ============================================ -->
+    <!-- RESULTADOS DE BÚSQUEDA -->
+    <!-- ============================================ -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rvSearchResults"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:maxHeight="300dp"
+        android:layout_marginTop="88dp"
+        android:layout_marginHorizontal="16dp"
+        android:visibility="gone"
+        android:background="#E6000000"
+        android:padding="8dp"
+        android:elevation="4dp" />
+
+    <!-- ============================================ -->
+    <!-- BOTONES FLOTANTES: Abajo -->
+    <!-- ============================================ -->
+    <LinearLayout
+        android:id="@+id/bottomButtons"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:orientation="vertical"
+        android:padding="16dp"
+        android:gravity="center">
+
+        <!-- Botón Iniciar Navegación (oculto inicialmente) -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnStartNavigation"
+            android:layout_width="match_parent"
+            android:layout_height="64dp"
+            android:text="🧭 INICIAR NAVEGACIÓN"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:visibility="gone"
+            app:backgroundTint="#4CAF50"
+            app:cornerRadius="16dp"
+            app:elevation="8dp" />
+
+        <!-- Botones secundarios -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="horizontal"
+            android:gravity="center">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnRecordRoute"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="56dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="8dp"
+                android:text="🎬 GRABAR RUTA"
+                android:textSize="14sp"
+                app:strokeColor="#FF9800"
+                app:cornerRadius="12dp"
+                app:backgroundTint="#66000000" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnMyRoutes"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="56dp"
+                android:layout_weight="1"
+                android:text="📂 MIS RUTAS"
+                android:textSize="14sp"
+                app:strokeColor="#2196F3"
+                app:cornerRadius="12dp"
+                app:backgroundTint="#66000000" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <!-- GPS Status Indicator -->
+    <TextView
+        android:id="@+id/tvGpsStatus"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="24dp"
+        android:layout_marginEnd="24dp"
+        android:background="#CC000000"
+        android:padding="8dp"
+        android:text="📍 GPS"
+        android:textColor="#4CAF50"
+        android:textSize="12sp"
+        android:elevation="4dp" />
+
+</FrameLayout>

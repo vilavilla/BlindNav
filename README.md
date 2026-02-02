@@ -1,8 +1,16 @@
 # BlindNav 🦯
 
-**Android navigation and obstacle detection app for visually impaired people.**
+**Aplicación Android de navegación Turn-by-Turn y detección de obstáculos para personas con discapacidad visual.**
 
-> Users can say *"Take me to the pharmacy"* and the system guides them step by step while scanning the environment for obstacles.
+> Los usuarios dicen *"Llévame a la farmacia"* y el sistema les guía paso a paso por las calles reales mientras escanea el entorno en busca de obstáculos.
+
+### 🆕 **NUEVAS FUNCIONALIDADES (Febrero 2026)**
+
+- ✅ **OpenStreetMap** sin API keys (Nominatim + OSRM + osmdroid)
+- ✅ **Navegación Turn-by-Turn** por calles y aceras reales (OSRMBonusPack)
+- ✅ **Brújula de alta precisión** con Rotation Vector Sensor (eliminado jitter)
+- ✅ **Búsqueda local inteligente** con viewbox GPS (resultados cercanos prioritarios)
+- ✅ **MyLocationNewOverlay** - Ubicación en tiempo real con flecha direccional
 
 ---
 
@@ -33,15 +41,56 @@ BlindNav is an Android application designed to help blind or low-vision people t
 
 ### Key Features
 
-- ✅ **Offline-first**: Object detection without internet connection
-- ✅ **Dual parallel tasks**: Safety and Navigation run simultaneously
-- ✅ **Intelligent audio**: Safety ALWAYS interrupts Navigation
-- ✅ **High contrast**: UI designed for low vision
-- ✅ **Voice commands**: "Take me to X", "Go to X", "Stop"
+- ✅ **OpenStreetMap completo**: Sin Google Maps, sin API keys, sin costos
+- ✅ **Turn-by-Turn navigation**: "Gira a la izquierda en 50m", "Cruza la calle"
+- ✅ **Rutas por calles reales**: OSRMBonusPack con modo PEATÓN (aceras)
+- ✅ **Brújula ultra-estable**: Rotation Vector Sensor (fusión hardware)
+- ✅ **Búsqueda local**: ViewBox ±10km prioriza resultados cercanos
+- ✅ **Ubicación en tiempo real**: MyLocationNewOverlay con flecha direccional
+- ✅ **Detección de obstáculos offline**: ML Kit sin internet
+- ✅ **Audio inteligente**: Seguridad SIEMPRE interrumpe navegación
+- ✅ **Alto contraste**: UI diseñada para baja visión
+- ✅ **Comandos de voz**: "Llévame a X", "Ve a X", "Para"
 
 ---
 
-## 🔍 How It Works - Complete Workflow
+## �️ Stack Tecnológico
+
+### **Mapas y Navegación (OpenStreetMap)**
+
+| Componente | Tecnología | Propósito |
+|------------|-----------|----------|
+| **Mapa visual** | osmdroid 6.1.18 | Tiles de OpenStreetMap sin API keys |
+| **Ubicación en tiempo real** | MyLocationNewOverlay | Punto azul + flecha de dirección |
+| **Geocoding** | Nominatim API | "Cítara, Fraga" → coordenadas GPS |
+| **Búsqueda local** | ViewBox + bounded=1 | Resultados en radio ±10km |
+| **Routing** | OSRM + OSRMBonusPack | Rutas peatonales por calles |
+| **Turn-by-Turn** | RoadManager.mNodes | Instrucciones: "Gira a la izquierda" |
+| **Polyline** | RoadManager.buildRoadOverlay | Visualización de ruta sobre mapa |
+
+### **Sensores de Navegación**
+
+| Sensor | Implementación | Mejora |
+|--------|---------------|--------|
+| **GPS** | FusedLocationProviderClient | Alta precisión |
+| **Brújula** | TYPE_ROTATION_VECTOR | Fusión hardware (accel+gyro+mag) |
+| **Filtro Low-Pass** | Alpha = 0.05 | Elimina jitter (temblor) |
+
+### **Detección de Obstáculos**
+
+- **ML Kit Object Detection** (offline)
+- **CameraX** para captura de frames
+- **Heurísticas de seguridad** basadas en tamaño/posición
+
+### **Sistema de Audio Prioritario**
+
+- **TextToSpeech** para instrucciones
+- **Prioridades**: SAFETY > NAVIGATION > SYSTEM
+- **Interrupciones inteligentes**
+
+---
+
+## �🔍 How It Works - Complete Workflow
 
 ### Real-World Usage Scenario
 
@@ -66,23 +115,33 @@ TTS announces: "BlindNav ready. Say 'Take me to' followed by a destination."
 #### **Phase 2: Voice Command & Route Planning**
 
 ```
-User says: "Take me to the pharmacy"
+User says: "Llévame a la farmacia"
     ↓
 VoiceCommander captures and processes audio:
     ├─ Speech-to-text conversion
-    ├─ Pattern matching: "take me to [destination]"
-    └─ Extract destination: "pharmacy"
+    ├─ Pattern matching: "llévame a [destination]"
+    └─ Extract destination: "farmacia"
     ↓
-MockRouteProvider generates route:
-    ├─ Current GPS location: (41.3851°, 2.1734°)
-    ├─ Destination coordinates: (41.3860°, 2.1745°)
-    └─ Generate waypoints:
-        • Point 1: Start (0m)
-        • Point 2: Turn right in 50m
-        • Point 3: Continue straight 80m
-        • Point 4: Pharmacy entrance (130m total)
+Nominatim Search (con ViewBox local):
+    ├─ GPS usuario: (41.3851°, 2.1734°)
+    ├─ ViewBox: ±0.1° (~10km radio)
+    ├─ Query: "farmacia&viewbox=2.07,41.48,2.27,41.28&bounded=1"
+    └─ Resultado: Farmacia Municipal (41.3860°, 2.1745°) - 120m
     ↓
-TTS confirms: "Route calculated. 130 meters to pharmacy. Starting navigation."
+OSRMRouteProvider calculates Turn-by-Turn route:
+    ├─ Start: (41.3851°, 2.1734°)
+    ├─ End: (41.3860°, 2.1745°)
+    ├─ RoadManager mode: MEAN_BY_FOOT (pedestrian)
+    └─ Road.mNodes extracted:
+        • Node 0: "Sal del edificio" (0m)
+        • Node 1: "Gira a la derecha en Calle Mayor" (15m)
+        • Node 2: "Continúa recto por Calle Mayor" (80m)
+        • Node 3: "Cruza el paso de peatones" (95m)
+        • Node 4: "Has llegado a Farmacia Municipal" (120m)
+    ↓
+Polyline azul dibujada en el mapa siguiendo las aceras
+    ↓
+TTS confirms: "Ruta calculada. 120 metros a farmacia. Iniciando navegación."
 ```
 
 #### **Phase 3: Active Navigation (Dual System)**
@@ -880,15 +939,145 @@ cd BlindNav
 
 ---
 
-## 🔮 Futuras Mejoras
+## �️ Componentes de OpenStreetMap
 
-- [ ] Integrar Google Directions API para rutas reales
+### NominatimGeocoder.kt
+
+```kotlin
+// Búsqueda con ViewBox local
+suspend fun search(
+    query: String,
+    limit: Int = 5,
+    userLat: Double? = null,  // Para búsqueda local
+    userLon: Double? = null
+): List<SearchResult>
+
+// Ejemplo de uso:
+val results = NominatimGeocoder.search(
+    query = "Cítara",
+    userLat = 41.52,
+    userLon = 0.35
+)
+// Devuelve solo resultados en radio ±10km
+```
+
+### OSRMRouteProvider.kt
+
+```kotlin
+class OSRMRouteProvider(context: Context) {
+    private val roadManager = OSRMRoadManager(context, USER_AGENT).apply {
+        setMean(OSRMRoadManager.MEAN_BY_FOOT) // Modo PEATÓN
+    }
+    
+    suspend fun calculateRoute(
+        startLat: Double, startLon: Double,
+        endLat: Double, endLon: Double,
+        routeId: Long
+    ): RouteResult? {
+        val road = roadManager.getRoad(waypoints)
+        
+        // Extraer instrucciones Turn-by-Turn
+        val instructions = road.mNodes.map { node ->
+            TurnInstruction(
+                distance = node.mLength * 1000,
+                instruction = node.mInstructions, // "Gira a la izquierda"
+                maneuverType = node.mManeuverType,
+                latitude = node.mLocation.latitude,
+                longitude = node.mLocation.longitude
+            )
+        }
+        
+        // Polyline para visualización
+        val polyline = RoadManager.buildRoadOverlay(road)
+        polyline.outlinePaint.color = 0xFF2196F3.toInt() // Azul
+        polyline.outlinePaint.strokeWidth = 12f
+        
+        return RouteResult(checkpoints, road, polyline, instructions)
+    }
+}
+```
+
+### LocationSensorManager.kt
+
+```kotlin
+// Brújula con Rotation Vector (hardware fusion)
+private val rotationVectorSensor: Sensor? =
+    sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
+
+private const val COMPASS_ALPHA = 0.05f // Filtro muy agresivo
+
+override fun onSensorChanged(event: SensorEvent) {
+    when (event.sensor.type) {
+        Sensor.TYPE_ROTATION_VECTOR -> {
+            SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
+            SensorManager.getOrientation(rotationMatrix, orientationAngles)
+            
+            var azimuth = Math.toDegrees(orientationAngles[0].toDouble())
+            // Suavizar con low-pass filter
+            smoothedBearing = smoothBearing(smoothedBearing, azimuth)
+        }
+    }
+}
+```
+
+### HomeActivity.kt - Configuración del Mapa
+
+```kotlin
+private fun setupMap() {
+    mapView.apply {
+        setTileSource(TileSourceFactory.MAPNIK) // Tiles de OSM
+        setMultiTouchControls(true)
+        controller.setZoom(18.0) // Nivel calle
+    }
+    
+    // MyLocationOverlay
+    myLocationOverlay = MyLocationNewOverlay(locationProvider, mapView)
+    myLocationOverlay.enableMyLocation()
+    myLocationOverlay.enableFollowLocation()
+    
+    // Centrar en primera ubicación GPS
+    myLocationOverlay.runOnFirstFix {
+        runOnUiThread {
+            mapView.controller.setZoom(18.0)
+            mapView.controller.animateTo(myLocationOverlay.myLocation)
+        }
+    }
+}
+```
+
+---
+
+## 📊 Comparativa: Antes vs Ahora
+
+| Aspecto | ❌ ANTES (Google Maps) | ✅ AHORA (OpenStreetMap) |
+|---------|----------------------|------------------------|
+| **API Keys** | Requerido (facturación) | Sin API keys |
+| **Costos** | $7/1000 requests | Gratis ilimitado |
+| **Geocoding** | Google Places API | Nominatim (OSM) |
+| **Routing** | Directions API | OSRM + OSRMBonusPack |
+| **Rutas** | Líneas genéricas | Turn-by-Turn por calles |
+| **Instrucciones** | "Ve al Norte" | "Gira a la izquierda en 50m" |
+| **Búsqueda** | Global (mundo) | Local con viewbox ±10km |
+| **Brújula** | Magnetometer + Accel | Rotation Vector (fusion) |
+| **Estabilidad** | Jitter visible | Ultra-estable (alpha 0.05) |
+| **Mapa offline** | No | Posible con tiles cache |
+| **Libertad** | Limitada (ToS) | Open source completo |
+
+---
+
+## �🔮 Futuras Mejoras
+
+- [x] ~~Integrar rutas reales~~ → **✅ HECHO con OSRM Turn-by-Turn**
+- [x] ~~Búsqueda de lugares~~ → **✅ HECHO con Nominatim local**
+- [x] ~~Brújula estable~~ → **✅ HECHO con Rotation Vector**
+- [ ] Modo offline completo con tiles de OSM descargados
 - [ ] Añadir sensor de profundidad (ARCore Depth API)
-- [ ] Modo offline completo con mapas descargados
-- [ ] Detección de semáforos y señales
+- [ ] Detección de semáforos y señales con YOLO
 - [ ] Aprendizaje de rutas frecuentes
-- [ ] Soporte multi-idioma
-- [ ] Integración con TalkBack
+- [ ] Soporte multi-idioma (inglés, catalán, español)
+- [ ] Integración completa con TalkBack
+- [ ] Audio espacial 3D para obstáculos laterales
+- [ ] Notificaciones hápticas direccionales
 
 ---
 

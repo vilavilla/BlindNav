@@ -83,3 +83,14 @@ Thumbs.db
 
 gradle/wrapper/gradle-*.zip
 gradle/wrapper/gradle-*/lib/
+
+# Build outputs y logs generados
+build_output.txt
+build_errors.txt
+*.hprof
+
+# OSM cache
+osmdroid/
+
+# Kotlin metadata
+.kotlintest/

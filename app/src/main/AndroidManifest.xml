@@ -19,10 +19,18 @@
     <!-- Micrófono: Comandos de voz -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     
-    <!-- Internet: Reconocimiento de voz (Google Speech) -->
+    <!-- Internet: Reconocimiento de voz, geocoding y OSM -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     
-    <!-- ARCore: Requiere funciones AR -->
+    <!-- Almacenamiento: Cache de tiles OSM -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32"
+        tools:ignore="ScopedStorage" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    
+    <!-- Hardware features -->
     <uses-feature android:name="android.hardware.camera.ar" android:required="false" />
     <uses-feature android:name="android.hardware.camera" android:required="true" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
@@ -47,18 +55,48 @@
             android:name="com.google.ar.core"
             android:value="required" />
 
-        <!-- Activity Principal -->
+        <!-- ============================================ -->
+        <!-- PANTALLA PRINCIPAL: HomeActivity (LAUNCHER) -->
+        <!-- ============================================ -->
         <activity
-            android:name=".ui.MainActivity"
+            android:name=".ui.home.HomeActivity"
             android:exported="true"
             android:screenOrientation="portrait"
-            android:keepScreenOn="true"
             android:theme="@style/Theme.BlindNav">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- ============================================ -->
+        <!-- PREVIEW DE RUTA: RoutePreviewActivity -->
+        <!-- ============================================ -->
+        <activity
+            android:name=".ui.preview.RoutePreviewActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.BlindNav" />
+
+        <!-- ============================================ -->
+        <!-- NAVEGACIÓN: NavigationActivity (Cámara + Sonar) -->
+        <!-- ============================================ -->
+        <activity
+            android:name=".ui.navigation.NavigationActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:keepScreenOn="true"
+            android:theme="@style/Theme.BlindNav" />
+
+        <!-- ============================================ -->
+        <!-- LEGACY: MainActivity (mantenida por compatibilidad) -->
+        <!-- ============================================ -->
+        <activity
+            android:name=".ui.MainActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:keepScreenOn="true"
+            android:theme="@style/Theme.BlindNav" />
 
     </application>
 

@@ -1,225 +1,442 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout 
+<!--
+    BlindNav - Main Activity Layout
+    
+    CAPAS (de atrás hacia delante):
+    1. PreviewView (cámara) - FONDO
+    2. BoundingBoxOverlay (detección) - TRANSPARENTE
+    3. HUD Datos (GPS, brújula, checkpoint) - ARRIBA
+    4. Controles (FABs, botones) - FLOTANTES
+-->
+<androidx.constraintlayout.widget.ConstraintLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/rootLayout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#000000"
+    android:background="@android:color/black"
     tools:context=".ui.MainActivity">
 
     <!-- ============================================ -->
-    <!-- CAPA 1: PREVIEW DE CÁMARA -->
+    <!-- CAPA 1: CÁMARA (FONDO) -->
     <!-- ============================================ -->
     <androidx.camera.view.PreviewView
-        android:id="@+id/previewView"
+        android:id="@+id/viewFinder"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        app:layout_constraintBottom_toTopOf="@id/navInfoContainer"
-        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
+        app:layout_constraintEnd_toEndOf="parent"
+        app:scaleType="fillCenter" />
 
     <!-- ============================================ -->
-    <!-- CAPA 2: OVERLAY DE BOUNDING BOXES -->
+    <!-- CAPA 2: OVERLAY DE DETECCIÓN (TRANSPARENTE) -->
     <!-- ============================================ -->
     <com.blindnav.app.ui.overlay.BoundingBoxOverlay
         android:id="@+id/boundingBoxOverlay"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        app:layout_constraintBottom_toBottomOf="@id/previewView"
-        app:layout_constraintEnd_toEndOf="@id/previewView"
-        app:layout_constraintStart_toStartOf="@id/previewView"
-        app:layout_constraintTop_toTopOf="@id/previewView" />
+        android:background="@android:color/transparent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
 
     <!-- ============================================ -->
-    <!-- CAPA 3: OVERLAY DE PELIGRO (FLASH ROJO) -->
+    <!-- CAPA 3: HUD DE DATOS (ARRIBA) -->
     <!-- ============================================ -->
-    <View
-        android:id="@+id/hazardOverlay"
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/hudCard"
         android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:alpha="0"
-        android:background="#F44336"
-        android:visibility="gone"
-        app:layout_constraintBottom_toBottomOf="@id/previewView"
-        app:layout_constraintEnd_toEndOf="@id/previewView"
-        app:layout_constraintStart_toStartOf="@id/previewView"
-        app:layout_constraintTop_toTopOf="@id/previewView" />
+        android:layout_height="wrap_content"
+        android:layout_margin="16dp"
+        app:cardBackgroundColor="#CC000000"
+        app:cardCornerRadius="16dp"
+        app:cardElevation="8dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <!-- Estado del sistema -->
+            <TextView
+                android:id="@+id/tvSystemStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="🟢 SISTEMA ACTIVO"
+                android:textColor="#4CAF50"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:gravity="center" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginVertical="8dp"
+                android:background="#333333" />
+
+            <!-- Fila 1: GPS -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="📍 GPS:"
+                    android:textColor="#AAAAAA"
+                    android:textSize="14sp" />
+
+                <TextView
+                    android:id="@+id/tvGpsCoordinates"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="8dp"
+                    android:text="Esperando señal..."
+                    android:textColor="#FFFFFF"
+                    android:textSize="14sp" />
+
+                <TextView
+                    android:id="@+id/tvGpsAccuracy"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="±0m"
+                    android:textColor="#FFEB3B"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <!-- Fila 2: Brújula -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="🧭 Dirección:"
+                    android:textColor="#AAAAAA"
+                    android:textSize="14sp" />
+
+                <TextView
+                    android:id="@+id/tvCompassDirection"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="8dp"
+                    android:text="N (0°)"
+                    android:textColor="#FFFFFF"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <!-- Fila 3: Próximo Checkpoint -->
+            <LinearLayout
+                android:id="@+id/checkpointRow"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:visibility="gone">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="🎯 Próximo:"
+                    android:textColor="#AAAAAA"
+                    android:textSize="14sp" />
+
+                <TextView
+                    android:id="@+id/tvNextCheckpoint"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="8dp"
+                    android:text="--"
+                    android:textColor="#2196F3"
+                    android:textSize="14sp" />
+
+                <TextView
+                    android:id="@+id/tvCheckpointDistance"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0m"
+                    android:textColor="#FF9800"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
 
     <!-- ============================================ -->
-    <!-- INDICADOR DE NIVEL (ESQUINA SUPERIOR) -->
+    <!-- INDICADOR DE PELIGRO (CENTRO) -->
     <!-- ============================================ -->
     <TextView
         android:id="@+id/tvHazardIndicator"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_margin="16dp"
         android:background="@drawable/hazard_badge_background"
-        android:paddingHorizontal="24dp"
-        android:paddingVertical="12dp"
-        android:text="SAFE"
+        android:padding="16dp"
+        android:text="⚠️ ALERTA"
         android:textColor="#FFFFFF"
-        android:textSize="28sp"
+        android:textSize="24sp"
         android:textStyle="bold"
-        android:fontFamily="monospace"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
-
-    <!-- ============================================ -->
-    <!-- CONTENEDOR DE ESTADO (PANEL INFERIOR) -->
-    <!-- ============================================ -->
-    <LinearLayout
-        android:id="@+id/statusContainer"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:background="#E6000000"
-        android:orientation="vertical"
-        android:padding="20dp"
-        app:layout_constraintBottom_toTopOf="@id/buttonsContainer"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent">
-
-        <!-- TEXTO DE ESTADO PRINCIPAL (GIGANTE) -->
-        <TextView
-            android:id="@+id/tvStatus"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center"
-            android:text="LISTO"
-            android:textColor="#FFFFFF"
-            android:textSize="32sp"
-            android:textStyle="bold"
-            android:fontFamily="sans-serif-condensed" />
-
-        <!-- NIVEL DE PELIGRO (TEXTO GRANDE) -->
-        <TextView
-            android:id="@+id/tvHazardLevel"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:gravity="center"
-            android:text="SAFE"
-            android:textColor="#4CAF50"
-            android:textSize="48sp"
-            android:textStyle="bold"
-            android:fontFamily="monospace" />
-
-        <!-- INFO DE DEBUG -->
-        <TextView
-            android:id="@+id/tvDebugInfo"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:gravity="center"
-            android:text="0 FPS | 0 obstáculos | 0 ms"
-            android:textColor="#888888"
-            android:textSize="14sp"
-            android:fontFamily="monospace" />
-
-    </LinearLayout>
-
-    <!-- ============================================ -->
-    <!-- INFO DE NAVEGACIÓN GPS -->
-    <!-- ============================================ -->
-    <LinearLayout
-        android:id="@+id/navInfoContainer"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:background="#CC1565C0"
-        android:orientation="vertical"
-        android:padding="12dp"
         android:visibility="gone"
-        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/hudCard"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent">
-
-        <TextView
-            android:id="@+id/tvNavDestination"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Navegando a: ---"
-            android:textColor="#FFFFFF"
-            android:textSize="20sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/tvNavDistance"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Distancia: --- m"
-            android:textColor="#E3F2FD"
-            android:textSize="16sp" />
-
-        <TextView
-            android:id="@+id/tvNavBearing"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Dirección: ---"
-            android:textColor="#BBDEFB"
-            android:textSize="14sp"
-            android:fontFamily="monospace" />
-
-    </LinearLayout>
-
-    <!-- ============================================ -->
-    <!-- CONTENEDOR DE BOTONES -->
-    <!-- ============================================ -->
-    <LinearLayout
-        android:id="@+id/buttonsContainer"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:layout_margin="16dp"
-        android:orientation="horizontal"
-        app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent">
-
-        <!-- BOTÓN DE VOZ (MICRÓFONO) -->
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnVoice"
-            android:layout_width="0dp"
-            android:layout_height="100dp"
-            android:layout_weight="1"
-            android:layout_marginEnd="8dp"
-            android:text="🎤\nVOZ"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            android:backgroundTint="#7B1FA2"
-            app:cornerRadius="20dp" />
-
-        <!-- BOTÓN PRINCIPAL (SAFETY ON/OFF) -->
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnToggleNavigation"
-            android:layout_width="0dp"
-            android:layout_height="100dp"
-            android:layout_weight="2"
-            android:text="▶ INICIAR"
-            android:textSize="24sp"
-            android:textStyle="bold"
-            android:backgroundTint="#1565C0"
-            app:cornerRadius="20dp" />
-
-    </LinearLayout>
+        android:layout_marginTop="16dp" />
 
     <!-- ============================================ -->
-    <!-- INDICADOR DE VOZ ESCUCHANDO -->
+    <!-- SWITCH MODO SONAR (ARRIBA DERECHA) -->
     <!-- ============================================ -->
-    <TextView
-        android:id="@+id/tvVoiceStatus"
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/sonarSwitchCard"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="8dp"
-        android:background="#CC000000"
-        android:paddingHorizontal="20dp"
-        android:paddingVertical="10dp"
-        android:text="🎤 Escuchando..."
-        android:textColor="#FFEB3B"
-        android:textSize="20sp"
-        android:textStyle="bold"
+        android:layout_margin="16dp"
+        app:cardBackgroundColor="#CC000000"
+        app:cardCornerRadius="12dp"
+        app:layout_constraintTop_toBottomOf="@id/hudCard"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:padding="12dp"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="🔊 Sonar"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp" />
+
+            <com.google.android.material.switchmaterial.SwitchMaterial
+                android:id="@+id/switchSonar"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                app:thumbTint="#4CAF50"
+                app:trackTint="#666666" />
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+
+    <!-- ============================================ -->
+    <!-- PANEL DE GRABACIÓN (VISIBLE DURANTE RECORDING) -->
+    <!-- ============================================ -->
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/recordingPanel"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_margin="16dp"
         android:visibility="gone"
-        app:layout_constraintBottom_toTopOf="@id/buttonsContainer"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent" />
+        app:cardBackgroundColor="#CC212121"
+        app:cardCornerRadius="16dp"
+        app:layout_constraintBottom_toTopOf="@id/controlsContainer"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <!-- Título -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="📍 REPORTAR EVENTO"
+                android:textColor="#FFEB3B"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:gravity="center" />
+
+            <!-- Grid 2x2 de botones -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:orientation="horizontal">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnReportCrossing"
+                    style="@style/Widget.MaterialComponents.Button"
+                    android:layout_width="0dp"
+                    android:layout_height="64dp"
+                    android:layout_weight="1"
+                    android:layout_marginEnd="4dp"
+                    android:text="🦓 CRUCE"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    app:backgroundTint="#1565C0"
+                    app:cornerRadius="12dp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnReportObstacle"
+                    style="@style/Widget.MaterialComponents.Button"
+                    android:layout_width="0dp"
+                    android:layout_height="64dp"
+                    android:layout_weight="1"
+                    android:layout_marginStart="4dp"
+                    android:text="⚠️ OBSTÁCULO"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    app:backgroundTint="#E65100"
+                    app:cornerRadius="12dp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:orientation="horizontal">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnReportTurn"
+                    style="@style/Widget.MaterialComponents.Button"
+                    android:layout_width="0dp"
+                    android:layout_height="64dp"
+                    android:layout_weight="1"
+                    android:layout_marginEnd="4dp"
+                    android:text="↪️ GIRO"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    app:backgroundTint="#7B1FA2"
+                    app:cornerRadius="12dp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnReportInfo"
+                    style="@style/Widget.MaterialComponents.Button"
+                    android:layout_width="0dp"
+                    android:layout_height="64dp"
+                    android:layout_weight="1"
+                    android:layout_marginStart="4dp"
+                    android:text="ℹ️ INFO"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    app:backgroundTint="#2E7D32"
+                    app:cornerRadius="12dp" />
+            </LinearLayout>
+
+            <!-- Estado de grabación -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:id="@+id/tvRecordingStatus"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="🔴 Grabando..."
+                    android:textColor="#FF5252"
+                    android:textSize="14sp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnStopRecording"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="⏹ PARAR"
+                    android:textColor="#FF5252"
+                    app:strokeColor="#FF5252"
+                    app:cornerRadius="8dp" />
+            </LinearLayout>
+
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+
+    <!-- ============================================ -->
+    <!-- CAPA 4: CONTROLES FLOTANTES (ABAJO) -->
+    <!-- ============================================ -->
+    <LinearLayout
+        android:id="@+id/controlsContainer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_margin="16dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <!-- Botón GRABAR RUTA (Izquierda) -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnRecordRoute"
+            style="@style/Widget.MaterialComponents.Button"
+            android:layout_width="wrap_content"
+            android:layout_height="56dp"
+            android:text="🎬 GRABAR"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            app:backgroundTint="#C62828"
+            app:cornerRadius="28dp"
+            app:icon="@android:drawable/ic_menu_camera"
+            app:iconTint="#FFFFFF" />
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <!-- FAB MARCAR EVENTO (Centro-Derecha) -->
+        <com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton
+            android:id="@+id/fabMarkEvent"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="📍 EVENTO"
+            android:textColor="#FFFFFF"
+            app:backgroundTint="#FF6D00"
+            app:icon="@android:drawable/ic_menu_myplaces"
+            app:iconTint="#FFFFFF" />
+
+    </LinearLayout>
+
+    <!-- ============================================ -->
+    <!-- INDICADOR DE VOZ (FLOTANTE) -->
+    <!-- ============================================ -->
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/voiceIndicator"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="100dp"
+        android:visibility="gone"
+        app:cardBackgroundColor="#CC1565C0"
+        app:cardCornerRadius="24dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <TextView
+            android:id="@+id/tvVoiceStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:padding="16dp"
+            android:text="🎤 Escuchando..."
+            android:textColor="#FFFFFF"
+            android:textSize="16sp" />
+
+    </com.google.android.material.card.MaterialCardView>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

@@ -248,6 +248,45 @@ class FeedbackManager(private val context: Context) {
         }
     }
 
+    /**
+     * Vibración de confirmación - Pulso corto y suave
+     */
+    fun vibrateConfirmation() {
+        if (!vibrator.hasVibrator()) return
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val effect = VibrationEffect.createOneShot(50, 100)
+            vibrator.vibrate(effect)
+        } else {
+            @Suppress("DEPRECATION")
+            vibrator.vibrate(50)
+        }
+    }
+
+    /**
+     * Vibración de peligro - Pulso fuerte y largo
+     */
+    fun vibrateDanger() {
+        vibrateCritical()
+    }
+
+    /**
+     * Vibración de éxito - Doble pulso celebratorio
+     */
+    fun vibrateSuccess() {
+        if (!vibrator.hasVibrator()) return
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val pattern = longArrayOf(0, 100, 100, 100)
+            val amplitudes = intArrayOf(0, 150, 0, 200)
+            val effect = VibrationEffect.createWaveform(pattern, amplitudes, -1)
+            vibrator.vibrate(effect)
+        } else {
+            @Suppress("DEPRECATION")
+            vibrator.vibrate(longArrayOf(0, 100, 100, 100), -1)
+        }
+    }
+
     // ============================================
     // MÉTODOS DE AUDIO (TONOS)
     // ============================================

@@ -1,7 +1,7 @@
 package com.blindnav.app.domain
 
-import android.graphics.Rect
 import com.blindnav.app.domain.model.DetectedObstacle
+import com.blindnav.app.domain.model.ObstacleBounds
 import com.blindnav.app.domain.model.HazardLevel
 import org.junit.Assert.*
 import org.junit.Before
@@ -352,7 +352,7 @@ class SafetyTest {
         bottom: Int
     ): DetectedObstacle {
         return DetectedObstacle(
-            boundingBox = Rect(left, top, right, bottom),
+            boundingBox = ObstacleBounds(left, top, right, bottom),
             label = "test_obstacle",
             confidence = 0.95f,
             trackingId = null

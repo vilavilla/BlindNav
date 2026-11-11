@@ -29,7 +29,10 @@ object NominatimGeocoder {
 
     private const val TAG = "NominatimGeocoder"
     private const val BASE_URL = "https://nominatim.openstreetmap.org/search"
-    private const val USER_AGENT = "BlindNav/1.0 (Android Accessibility App)"
+    
+    // ✓ CRÍTICO: User-Agent con contacto (requerido por política de Nominatim)
+    // Formato: AppName/Version (Platform; contact@email.com)
+    private const val USER_AGENT = "BlindNav/1.0 (Android; Accessibility Navigation App; blindnav.app@gmail.com)"
 
     /**
      * Resultado de búsqueda Nominatim

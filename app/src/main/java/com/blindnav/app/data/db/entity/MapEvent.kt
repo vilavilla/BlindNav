@@ -98,5 +98,15 @@ data class MapEvent(
     val orderIndex: Int,
     
     /** Timestamp de creación */
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    /** Rumbo del móvil confirmado para el tramo de salida; null en rutas antiguas. */
+    val targetBearing: Float? = null,
+    /** Giro firmado medido entre el inicio y el final: positivo hacia la derecha. */
+    val turnDegrees: Float? = null,
+    /** Button-recorded manoeuvre with an explicit start and finish. */
+    @androidx.room.ColumnInfo(defaultValue = "0")
+    val hasExplicitEnd: Boolean = false,
+    val endLatitude: Double? = null,
+    val endLongitude: Double? = null,
+    val endedAt: Long? = null
 )

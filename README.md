@@ -4,6 +4,16 @@
 
 > Los usuarios dicen *"Llévame a la farmacia"* y el sistema les guía paso a paso por las calles reales mientras escanea el entorno en busca de obstáculos.
 
+## Últimas modificaciones
+
+**Código actualizado por última vez el 20 de septiembre de 2026. Repositorio publicado el 11 de noviembre de 2026.**
+
+- **20 de septiembre de 2026:** se corrigió la detección de objetos con la cámara del simulador y del móvil. El análisis procesa cada imagen de forma independiente para evitar fallos por marcas de tiempo repetidas.
+- **15 de septiembre de 2026:** se mejoró la grabación y repetición de rutas. Ahora se pueden marcar el inicio y el final de pasos de cebra, tramos rectos y giros; dictar instrucciones propias; guardar el rumbo de la brújula y reproducir los avisos en el mismo orden.
+- **3 de septiembre de 2026:** se reforzaron la navegación peatonal, el control de errores de GPS, la detección de obstáculos y la accesibilidad de las rutas.
+
+La guía detallada de la grabación está en [GRABAR_Y_REPETIR_RUTAS.md](GRABAR_Y_REPETIR_RUTAS.md).
+
 ### 🆕 **NUEVAS FUNCIONALIDADES (Febrero 2026)**
 
 - ✅ **OpenStreetMap** sin API keys (Nominatim + OSRM + osmdroid)

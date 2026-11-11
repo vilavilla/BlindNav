@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    NavigationActivity - Pantalla de Navegación con Cámara
-    LA ÚNICA pantalla que usa CameraX y SafetyAnalyzer
+    NavigationActivity - Navegación en Bolsillo (Pocket Mode)
+    MAPA como vista principal, Cámara secundaria (solo cuando se activa)
 -->
 <androidx.constraintlayout.widget.ConstraintLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
@@ -14,12 +14,25 @@
     tools:context=".ui.navigation.NavigationActivity">
 
     <!-- ============================================ -->
-    <!-- CAPA 1: CÁMARA (FONDO) -->
+    <!-- CAPA 1: MAPA OSM (PRINCIPAL - VISIBLE) -->
+    <!-- ============================================ -->
+    <org.osmdroid.views.MapView
+        android:id="@+id/mapView"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- ============================================ -->
+    <!-- CAPA 2: CÁMARA (SECUNDARIA - OCULTA POR DEFECTO) -->
     <!-- ============================================ -->
     <androidx.camera.view.PreviewView
         android:id="@+id/viewFinder"
         android:layout_width="0dp"
         android:layout_height="0dp"
+        android:visibility="gone"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
@@ -27,21 +40,18 @@
         app:scaleType="fillCenter" />
 
     <!-- ============================================ -->
-    <!-- CAPA 2: OVERLAY DE DETECCIÓN -->
+    <!-- CAPA 3: OVERLAY DE DETECCIÓN -->
     <!-- ============================================ -->
     <com.blindnav.app.ui.overlay.BoundingBoxOverlay
         android:id="@+id/boundingBoxOverlay"
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:background="@android:color/transparent"
+        android:visibility="gone"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
-
-    <!-- ============================================ -->
-    <!-- CAPA 3: INDICADOR DE DIRECCIÓN (CENTRO) -->
-    <!-- ============================================ -->
     <com.google.android.material.card.MaterialCardView
         android:id="@+id/directionCard"
         android:layout_width="200dp"
@@ -149,6 +159,19 @@
                 android:textColor="#AAAAAA"
                 android:textSize="14sp"
                 android:gravity="center" />
+                
+            <!-- Instrucción actual (texto gigante) -->
+            <TextView
+                android:id="@+id/tvCurrentInstruction"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="En 20m: Gira a la DERECHA"
+                android:textColor="#FFEB3B"
+                android:textSize="22sp"
+                android:textStyle="bold"
+                android:gravity="center"
+                android:visibility="gone" />
 
         </LinearLayout>
 
@@ -189,78 +212,99 @@
     <com.google.android.material.card.MaterialCardView
         android:id="@+id/recordingPanel"
         android:layout_width="0dp"
-        android:layout_height="wrap_content"
+        android:layout_height="0dp"
         android:layout_margin="16dp"
         android:visibility="gone"
-        app:cardBackgroundColor="#CC212121"
+        app:cardBackgroundColor="#EE212121"
         app:cardCornerRadius="16dp"
-        app:cardElevation="12dp"
+        app:layout_constraintTop_toBottomOf="@id/hudCard"
         app:layout_constraintBottom_toTopOf="@id/bottomControls"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
-
-        <LinearLayout
+        <ScrollView
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:padding="12dp">
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="📍 MARCAR EVENTO"
-                android:textColor="#FFEB3B"
-                android:textSize="14sp"
-                android:textStyle="bold"
-                android:gravity="center" />
-
+            android:layout_height="match_parent"
+            android:fillViewport="true">
             <LinearLayout
+                android:id="@+id/recordingActions"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:orientation="horizontal">
-
+                android:padding="12dp"
+                android:orientation="vertical">
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Marca dónde empieza y acaba cada tramo"
+                    android:textColor="#FFFFFF"
+                    android:textSize="18sp" />
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnFinishManeuver"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:minHeight="64dp"
+                    android:text="ACABA AQUÍ"
+                    android:visibility="gone"
+                    app:backgroundTint="#2E7D32" />
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnCancelManeuver"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:minHeight="48dp"
+                    android:text="CANCELAR ESTE TRAMO"
+                    android:visibility="gone" />
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnCrossing"
-                    style="@style/Widget.MaterialComponents.Button"
-                    android:layout_width="0dp"
-                    android:layout_height="56dp"
-                    android:layout_weight="1"
-                    android:layout_marginEnd="4dp"
-                    android:text="🦓"
-                    android:textSize="24sp"
-                    app:backgroundTint="#1565C0"
-                    app:cornerRadius="8dp" />
-
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:minHeight="64dp"
+                    android:text="PASO DE CEBRA: EMPIEZA AQUÍ"
+                    app:backgroundTint="#1565C0" />
                 <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnObstacle"
-                    style="@style/Widget.MaterialComponents.Button"
-                    android:layout_width="0dp"
-                    android:layout_height="56dp"
-                    android:layout_weight="1"
-                    android:layout_marginHorizontal="4dp"
-                    android:text="⚠️"
-                    android:textSize="24sp"
-                    app:backgroundTint="#E65100"
-                    app:cornerRadius="8dp" />
-
+                    android:id="@+id/btnStraight"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:minHeight="64dp"
+                    android:text="RECTO: EMPIEZA AQUÍ"
+                    app:backgroundTint="#1565C0" />
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnTurn"
-                    style="@style/Widget.MaterialComponents.Button"
-                    android:layout_width="0dp"
-                    android:layout_height="56dp"
-                    android:layout_weight="1"
-                    android:layout_marginStart="4dp"
-                    android:text="↪️"
-                    android:textSize="24sp"
-                    app:backgroundTint="#7B1FA2"
-                    app:cornerRadius="8dp" />
-
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:minHeight="64dp"
+                    android:text="GIRO A LA IZQUIERDA: EMPIEZA AQUÍ"
+                    app:backgroundTint="#7B1FA2" />
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnTurnRight"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:minHeight="64dp"
+                    android:text="GIRO A LA DERECHA: EMPIEZA AQUÍ"
+                    app:backgroundTint="#7B1FA2" />
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnObstacle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:minHeight="48dp"
+                    android:text="DICTAR OBSTÁCULO (OPCIONAL)" />
             </LinearLayout>
-
-        </LinearLayout>
-
+        </ScrollView>
     </com.google.android.material.card.MaterialCardView>
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnDescribeObstacle"
+        android:layout_width="0dp"
+        android:layout_height="64dp"
+        android:layout_marginHorizontal="24dp"
+        android:layout_marginBottom="10dp"
+        android:text="¿QUÉ HAY DELANTE?"
+        android:textColor="#FFFFFF"
+        android:textSize="17sp"
+        android:textStyle="bold"
+        android:visibility="gone"
+        app:backgroundTint="#1565C0"
+        app:cornerRadius="16dp"
+        app:layout_constraintBottom_toTopOf="@id/bottomControls"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
 
     <!-- ============================================ -->
     <!-- CONTROLES INFERIORES -->
@@ -322,7 +366,58 @@
             </LinearLayout>
 
         </com.google.android.material.card.MaterialCardView>
+        
+        <!-- Switch Cámara -->
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="wrap_content"
+            android:layout_height="56dp"
+            android:layout_marginStart="12dp"
+            app:cardBackgroundColor="#333333"
+            app:cardCornerRadius="12dp">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:orientation="horizontal"
+                android:paddingHorizontal="12dp"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:id="@+id/tvCameraIcon"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="👁️"
+                    android:textSize="20sp" />
+
+                <com.google.android.material.switchmaterial.SwitchMaterial
+                    android:id="@+id/switchCamera"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:checked="false"
+                    app:thumbTint="#4CAF50"
+                    app:trackTint="#666666" />
+
+            </LinearLayout>
+
+        </com.google.android.material.card.MaterialCardView>
 
     </LinearLayout>
+    
+    <!-- ============================================ -->
+    <!-- FAB: ACTIVAR CÁMARA (ESCANEO TEMPORAL) -->
+    <!-- ============================================ -->
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/fabCamera"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_margin="24dp"
+        android:contentDescription="Activar cámara para escaneo"
+        app:srcCompat="@android:drawable/ic_menu_camera"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/bottomControls"
+        app:backgroundTint="#2196F3"
+        app:tint="@android:color/white"
+        app:fabSize="normal" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

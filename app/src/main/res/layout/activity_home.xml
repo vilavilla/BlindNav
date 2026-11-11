@@ -117,6 +117,18 @@
             app:cornerRadius="16dp"
             app:elevation="8dp" />
 
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnSafetyMode"
+            android:layout_width="match_parent"
+            android:layout_height="64dp"
+            android:layout_marginTop="12dp"
+            android:text="PROTECCIÓN CON CÁMARA"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            app:backgroundTint="#C62828"
+            app:cornerRadius="16dp"
+            app:elevation="8dp" />
+
         <!-- Botones secundarios -->
         <LinearLayout
             android:layout_width="match_parent"

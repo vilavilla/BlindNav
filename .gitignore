@@ -94,3 +94,10 @@ osmdroid/
 
 # Kotlin metadata
 .kotlintest/
+
+# Capturas y volcados temporales del simulador
+/blindnav-camera*.png
+/blindnav-preview.png
+/*-window.xml
+/window.xml
+/home-current.xml

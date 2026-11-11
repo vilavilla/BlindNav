@@ -64,6 +64,7 @@ class CameraSource(
     
     // Control de estado
     private var isAnalyzing = false
+    @Volatile private var isFrameProcessing = false
 
     /**
      * Inicializa y vincula la cámara al ciclo de vida.
@@ -148,6 +149,13 @@ class CameraSource(
         } catch (e: Exception) {
             e.printStackTrace()
             isAnalyzing = false
+            _analysisResultFlow.tryEmit(
+                SafetyAnalysisResult(
+                    hazardLevel = com.blindnav.app.domain.model.HazardLevel.WARNING,
+                    isOperational = false,
+                    errorMessage = e.message ?: "No se pudo abrir la cámara"
+                )
+            )
         }
     }
 
@@ -164,6 +172,10 @@ class CameraSource(
     @SuppressLint("UnsafeOptInUsageError")
     private fun createImageAnalyzer(): ImageAnalysis.Analyzer {
         return ImageAnalysis.Analyzer { imageProxy ->
+            if (isFrameProcessing) {
+                imageProxy.close()
+                return@Analyzer
+            }
             
             val mediaImage = imageProxy.image
             
@@ -174,8 +186,10 @@ class CameraSource(
                     imageProxy.imageInfo.rotationDegrees
                 )
                 
-                val imageWidth = imageProxy.width
-                val imageHeight = imageProxy.height
+                val isQuarterTurn = imageProxy.imageInfo.rotationDegrees % 180 != 0
+                val imageWidth = if (isQuarterTurn) imageProxy.height else imageProxy.width
+                val imageHeight = if (isQuarterTurn) imageProxy.width else imageProxy.height
+                isFrameProcessing = true
                 
                 // Procesar en coroutine (no bloquea el executor)
                 scope.launch {
@@ -194,6 +208,7 @@ class CameraSource(
                     } finally {
                         // CRÍTICO: Siempre cerrar el ImageProxy
                         imageProxy.close()
+                        isFrameProcessing = false
                     }
                 }
             } else {
@@ -224,8 +239,14 @@ class CameraSource(
      */
     fun stopCamera() {
         isAnalyzing = false
-        scope.cancel()
+        imageAnalyzer?.clearAnalyzer()
         cameraProvider?.unbindAll()
+    }
+
+    /** Liberación definitiva; solo se llama al destruir la pantalla. */
+    fun release() {
+        stopCamera()
+        scope.cancel()
         analysisExecutor.shutdown()
         safetyAnalyzer.close()
     }

@@ -28,6 +28,7 @@ import kotlin.math.abs
  * @property longitude Longitud GPS
  * @property bearing Azimut/heading en grados (0-360, donde 0=Norte)
  * @property accuracy Precisión del GPS en metros
+ * @property speed Velocidad en m/s (para optimización de GPS bearing en Pocket Mode)
  * @property timestamp Timestamp de la medición
  */
 data class UserOrientation(
@@ -35,6 +36,7 @@ data class UserOrientation(
     val longitude: Double,
     val bearing: Float,
     val accuracy: Float,
+    val speed: Float = 0f,
     val timestamp: Long = System.currentTimeMillis()
 ) {
     /**
@@ -46,6 +48,7 @@ data class UserOrientation(
             longitude = this@UserOrientation.longitude
             bearing = this@UserOrientation.bearing
             accuracy = this@UserOrientation.accuracy
+            speed = this@UserOrientation.speed
         }
     }
 }
@@ -132,6 +135,12 @@ class LocationSensorManager(
     private var currentLocation: Location? = null
     private var currentBearing: Float = 0f
     private var smoothedBearing: Float = 0f
+    private var lastHeadingTime = 0L
+    private var headingAccuracy = SensorManager.SENSOR_STATUS_UNRELIABLE
+
+    fun isHeadingReliable(): Boolean =
+        System.currentTimeMillis() - lastHeadingTime in 0..3_000L &&
+            headingAccuracy >= SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM
     
     // ============================================
     // CONTROL DE CICLO DE VIDA
@@ -251,16 +260,24 @@ class LocationSensorManager(
     }
     
     private fun stopCompassUpdates() {
+        lastHeadingTime = 0L
         sensorManager.unregisterListener(this)
         hasAccelerometer = false
         hasMagnetometer = false
     }
     
     override fun onSensorChanged(event: SensorEvent) {
+        if (event.sensor.type == Sensor.TYPE_ROTATION_VECTOR || event.sensor.type == Sensor.TYPE_MAGNETIC_FIELD) {
+            headingAccuracy = event.accuracy
+        }
         when (event.sensor.type) {
             // ✓ PRIORIDAD: Rotation Vector (hardware fusion)
             Sensor.TYPE_ROTATION_VECTOR -> {
-                System.arraycopy(event.values, 0, lastRotationVector, 0, event.values.size)
+                // 🛡️ FIX CRÍTICO: Samsung devuelve 5 valores (último = precisión de heading)
+                // Rotation Vector necesita SOLO 4 valores (x, y, z, cos(θ/2))
+                // Copiamos ÚNICAMENTE los primeros 4 valores de forma segura
+                val copyLength = minOf(event.values.size, lastRotationVector.size)
+                System.arraycopy(event.values, 0, lastRotationVector, 0, copyLength)
                 updateCompassFromRotationVector()
             }
             
@@ -320,6 +337,7 @@ class LocationSensorManager(
         // ✓ Suavizar con filtro AGRESIVO (alpha=0.05)
         smoothedBearing = smoothBearing(smoothedBearing, azimuthDegrees)
         currentBearing = smoothedBearing
+        lastHeadingTime = System.currentTimeMillis()
         
         emitOrientation()
     }
@@ -350,6 +368,7 @@ class LocationSensorManager(
             // Suavizar con exponential moving average
             smoothedBearing = smoothBearing(smoothedBearing, azimuthDegrees)
             currentBearing = smoothedBearing
+            lastHeadingTime = System.currentTimeMillis()
             
             emitOrientation()
         }
@@ -394,11 +413,27 @@ class LocationSensorManager(
     private fun emitOrientation() {
         val location = currentLocation ?: return
         
+        // 🎯 POCKET MODE: Preferir GPS bearing cuando el usuario camina (> 3 km/h)
+        // La brújula magnética falla dentro del bolsillo, pero el GPS bearing es fiable
+        val speedKmh = (location.speed * 3.6f) // Convertir m/s a km/h
+        
+        val effectiveBearing = if (speedKmh > 3f && location.hasBearing()) {
+            // Usuario en movimiento: usar GPS bearing (dirección del movimiento)
+            Log.d(TAG, "✓ POCKET MODE: Usando GPS bearing (${speedKmh.toInt()} km/h)")
+            location.bearing
+        } else {
+            // Usuario estático o GPS sin bearing: usar brújula magnética
+            currentBearing
+        }
+        
         val orientation = UserOrientation(
             latitude = location.latitude,
             longitude = location.longitude,
-            bearing = currentBearing,
-            accuracy = location.accuracy
+            bearing = effectiveBearing,
+            accuracy = location.accuracy,
+            speed = location.speed,
+            // No renovar artificialmente la edad del GPS en cada evento de brújula.
+            timestamp = location.time
         )
         
         _orientationFlow.tryEmit(orientation)
@@ -408,6 +443,18 @@ class LocationSensorManager(
      * Obtiene la última ubicación conocida de forma síncrona.
      */
     fun getLastKnownLocation(): Location? = currentLocation
+
+    /** Evita arrancar una ruta con una posición antigua o demasiado imprecisa. */
+    fun getFreshLocation(
+        maxAgeMs: Long = 15_000L,
+        maxAccuracyMeters: Float = 35f
+    ): Location? {
+        val location = currentLocation ?: return null
+        val ageMs = System.currentTimeMillis() - location.time
+        return location.takeIf {
+            ageMs in 0..maxAgeMs && it.hasAccuracy() && it.accuracy <= maxAccuracyMeters
+        }
+    }
     
     /**
      * Obtiene el último bearing conocido.
@@ -423,7 +470,9 @@ class LocationSensorManager(
             latitude = location?.latitude ?: 0.0,
             longitude = location?.longitude ?: 0.0,
             bearing = currentBearing,
-            accuracy = location?.accuracy ?: 0f
+            accuracy = location?.accuracy ?: 0f,
+            speed = location?.speed ?: 0f,
+            timestamp = location?.time ?: 0L
         )
     }
 }

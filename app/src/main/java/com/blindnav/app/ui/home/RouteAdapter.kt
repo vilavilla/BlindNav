@@ -37,14 +37,16 @@ class RouteAdapter(
             binding.tvRouteName.text = route.name
             
             // Description as subtitle
-            binding.tvRouteDistance.text = if (route.description.isNotEmpty()) {
+            binding.tvRouteDistance.text = if (route.description.startsWith("AUTO_DEST:")) {
+                "Ruta peatonal guardada"
+            } else if (route.description.isNotEmpty()) {
                 route.description
             } else {
                 "Ruta guardada"
             }
             
             // Placeholder para eventos
-            binding.tvRouteEvents.text = "Tap para ver"
+            binding.tvRouteEvents.text = "Toca para ver y navegar"
             
             // Click en toda la tarjeta
             binding.root.setOnClickListener {

@@ -1,6 +1,17 @@
 package com.blindnav.app.domain.model
 
-import android.graphics.Rect
+/** Rectángulo independiente de Android para que la lógica sea testeable en la JVM. */
+data class ObstacleBounds(
+    val left: Int,
+    val top: Int,
+    val right: Int,
+    val bottom: Int
+) {
+    fun width(): Int = (right - left).coerceAtLeast(0)
+    fun height(): Int = (bottom - top).coerceAtLeast(0)
+    fun centerX(): Int = left + width() / 2
+    fun centerY(): Int = top + height() / 2
+}
 
 /**
  * Representa un obstáculo detectado en el frame de la cámara.
@@ -11,7 +22,7 @@ import android.graphics.Rect
  * @property trackingId ID de seguimiento para objetos entre frames
  */
 data class DetectedObstacle(
-    val boundingBox: Rect,
+    val boundingBox: ObstacleBounds,
     val label: String? = null,
     val confidence: Float = 0f,
     val trackingId: Int? = null

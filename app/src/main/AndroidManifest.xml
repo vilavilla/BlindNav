@@ -50,10 +50,10 @@
         android:theme="@style/Theme.BlindNav"
         tools:targetApi="34">
 
-        <!-- Metadatos de ARCore -->
+        <!-- ARCore: opcional para no crashear en dispositivos sin soporte -->
         <meta-data
             android:name="com.google.ar.core"
-            android:value="required" />
+            android:value="optional" />
 
         <!-- ============================================ -->
         <!-- PANTALLA PRINCIPAL: HomeActivity (LAUNCHER) -->
@@ -89,14 +89,16 @@
             android:theme="@style/Theme.BlindNav" />
 
         <!-- ============================================ -->
-        <!-- LEGACY: MainActivity (mantenida por compatibilidad) -->
+        <!-- ERROR HANDLER: ErrorActivity (Crash Display) -->
         <!-- ============================================ -->
         <activity
-            android:name=".ui.MainActivity"
+            android:name=".crash.ErrorActivity"
             android:exported="false"
             android:screenOrientation="portrait"
-            android:keepScreenOn="true"
-            android:theme="@style/Theme.BlindNav" />
+            android:theme="@style/Theme.BlindNav"
+            android:launchMode="singleTask" />
+
+
 
     </application>
 

@@ -26,7 +26,6 @@ import com.blindnav.app.domain.model.HazardLevel
 import com.blindnav.app.domain.model.SafetyAnalysisResult
 import com.blindnav.app.domain.model.VoiceCommandResult
 import com.blindnav.app.domain.model.VoiceRecognizerState
-import com.blindnav.app.domain.navigation.NavigationManager
 import com.blindnav.app.ui.audio.PriorityAudioManager
 import com.blindnav.app.ui.feedback.SonarFeedback
 import com.blindnav.app.ui.voice.VoiceCommander
@@ -77,7 +76,7 @@ class MainActivity : AppCompatActivity() {
     
     // Componentes del sistema
     private lateinit var cameraSource: CameraSource
-    private lateinit var navigationManager: NavigationManager
+    // Navigation: usa GuidedNavigationManager (motor unificado)
     private lateinit var audioManager: PriorityAudioManager
     private lateinit var voiceCommander: VoiceCommander
     private lateinit var sonarFeedback: SonarFeedback
@@ -141,6 +140,8 @@ class MainActivity : AppCompatActivity() {
         
         // Setup UI listeners
         setupUIListeners()
+        // Los collectors se registran una sola vez desde onCreate.
+        startSensorUpdates()
         
         // PRIORIDAD: Verificar permisos ANTES de todo
         checkAndRequestPermissions()
@@ -152,14 +153,14 @@ class MainActivity : AppCompatActivity() {
         
         // Reiniciar sensores si tenemos permisos
         if (hasLocationPermission()) {
-            startSensorUpdates()
+            locationSensorManager.startTracking()
         }
     }
 
     override fun onPause() {
         super.onPause()
         Log.d(TAG, "⏸ onPause")
-        sensorUpdateJob?.cancel()
+        if (::locationSensorManager.isInitialized) locationSensorManager.stopTracking()
     }
 
     override fun onDestroy() {
@@ -174,7 +175,6 @@ class MainActivity : AppCompatActivity() {
         // Liberar recursos
         cameraExecutor.shutdown()
         if (::audioManager.isInitialized) audioManager.release()
-        if (::navigationManager.isInitialized) navigationManager.release()
         if (::voiceCommander.isInitialized) voiceCommander.release()
         if (::sonarFeedback.isInitialized) sonarFeedback.release()
         if (::cameraSource.isInitialized) cameraSource.stopCamera()
@@ -239,8 +239,8 @@ class MainActivity : AppCompatActivity() {
         // Iniciar cámara
         startCamera()
         
-        // Iniciar sensores de ubicación
-        startSensorUpdates()
+        // Iniciar sensores de ubicación; el collector ya se creó en onCreate.
+        locationSensorManager.startTracking()
         
         // Observar estado
         observeState()
@@ -287,8 +287,7 @@ class MainActivity : AppCompatActivity() {
         val safetyRepository = SafetyRepositoryImpl(cameraSource)
         viewModel = MainViewModel(safetyRepository)
         
-        // Navigation System
-        navigationManager = NavigationManager(this)
+        // Navigation System: GuidedNavigationManager es el motor unificado (NavigationManager eliminado)
         
         // Voice Commander
         voiceCommander = VoiceCommander(this)

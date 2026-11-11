@@ -117,10 +117,18 @@ class PriorityAudioManager(private val context: Context) {
             if (status == TextToSpeech.SUCCESS) {
                 tts?.let { engine ->
                     val result = engine.setLanguage(Locale("es", "ES"))
-                    if (result == TextToSpeech.LANG_MISSING_DATA || 
+                    if (result == TextToSpeech.LANG_MISSING_DATA ||
                         result == TextToSpeech.LANG_NOT_SUPPORTED) {
-                        // Fallback a inglés
-                        engine.setLanguage(Locale.US)
+                        // Segundo intento: español genérico sin región
+                        val fallbackResult = engine.setLanguage(Locale("es"))
+                        if (fallbackResult == TextToSpeech.LANG_MISSING_DATA ||
+                            fallbackResult == TextToSpeech.LANG_NOT_SUPPORTED) {
+                            // El dispositivo no tiene TTS en español instalado.
+                            // NO cambiar a inglés — se dejará sin voz hasta que el
+                            // usuario instale el paquete de voz español.
+                            Log.e(TAG, "TTS: Español no disponible en este dispositivo. " +
+                                "Instala 'Google Text-to-Speech' con voz española.")
+                        }
                     }
                     
                     // Configurar velocidad para claridad
@@ -245,6 +253,19 @@ class PriorityAudioManager(private val context: Context) {
     fun speakNavigation(instruction: String) {
         speak(instruction, AudioPriority.NAVIGATION)
     }
+
+    fun isVoiceBusy(): Boolean = isSpeaking || navigationQueue.isNotEmpty() || safetyQueue.isNotEmpty()
+
+    /** Drop outdated guidance after GPS loss or before opening the microphone. */
+    fun clearGuidance() {
+        navigationQueue.clear()
+        systemQueue.clear()
+        if (currentPriority != AudioPriority.SAFETY) {
+            interruptCurrentAudio()
+            currentPriority = null
+            _audioState.value = AudioState.Idle
+        }
+    }
     
     /**
      * Emite confirmación del sistema.
@@ -267,6 +288,11 @@ class PriorityAudioManager(private val context: Context) {
     }
     
     private fun processNextMessage() {
+        // Keep complete sentences and FIFO order. QUEUE_FLUSH used to cut off every
+        // message when another message of the same priority arrived 50 ms later.
+        if (!isTtsReady) return
+        val next = safetyQueue.peek() ?: navigationQueue.peek() ?: systemQueue.peek() ?: return
+        if (isSpeaking && next.priority.level <= (currentPriority?.level ?: 0)) return
         // Si ya estamos hablando con prioridad alta, esperar
         if (isSpeaking && currentPriority == AudioPriority.SAFETY) {
             return

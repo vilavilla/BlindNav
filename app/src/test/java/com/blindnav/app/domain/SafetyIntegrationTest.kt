@@ -1,7 +1,7 @@
 package com.blindnav.app.domain
 
-import android.graphics.Rect
 import com.blindnav.app.domain.model.DetectedObstacle
+import com.blindnav.app.domain.model.ObstacleBounds
 import com.blindnav.app.domain.model.HazardLevel
 import com.blindnav.app.ui.feedback.FeedbackManager
 import org.junit.Assert.*
@@ -39,7 +39,7 @@ class SafetyIntegrationTest {
     fun `when small object detected, FeedbackManager alert should NOT be called with CRITICAL`() {
         // GIVEN: Objeto pequeño
         val smallObstacle = DetectedObstacle(
-            boundingBox = Rect(300, 200, 340, 224),
+            boundingBox = ObstacleBounds(300, 200, 340, 224),
             label = "obstacle",
             confidence = 0.9f
         )
@@ -66,7 +66,7 @@ class SafetyIntegrationTest {
     fun `when large centered object detected, FeedbackManager alert MUST be called with CRITICAL`() {
         // GIVEN: Objeto grande y centrado (>40% altura)
         val largeObstacle = DetectedObstacle(
-            boundingBox = Rect(220, 84, 420, 324), // 50% altura, centrado
+            boundingBox = ObstacleBounds(220, 84, 420, 324), // 50% altura, centrado
             label = "obstacle",
             confidence = 0.9f
         )
@@ -94,11 +94,11 @@ class SafetyIntegrationTest {
         // Simular secuencia de frames con objeto acercándose
         val frames = listOf(
             // Frame 1: Lejos (5%)
-            DetectedObstacle(Rect(310, 230, 330, 254), "obj", 0.9f),
+            DetectedObstacle(ObstacleBounds(310, 230, 330, 254), "obj", 0.9f),
             // Frame 2: Medio (25%)
-            DetectedObstacle(Rect(270, 180, 370, 300), "obj", 0.9f),
+            DetectedObstacle(ObstacleBounds(270, 180, 370, 300), "obj", 0.9f),
             // Frame 3: Cerca (45%)
-            DetectedObstacle(Rect(220, 84, 420, 300), "obj", 0.9f)
+            DetectedObstacle(ObstacleBounds(220, 84, 420, 300), "obj", 0.9f)
         )
         
         val expectedLevels = listOf(
@@ -137,7 +137,7 @@ class SafetyIntegrationTest {
         // GIVEN: Múltiples obstáculos
         val obstacles = (1..10).map { i ->
             DetectedObstacle(
-                boundingBox = Rect(i * 50, i * 30, i * 50 + 40, i * 30 + 40),
+                boundingBox = ObstacleBounds(i * 50, i * 30, i * 50 + 40, i * 30 + 40),
                 label = "obstacle_$i",
                 confidence = 0.8f
             )

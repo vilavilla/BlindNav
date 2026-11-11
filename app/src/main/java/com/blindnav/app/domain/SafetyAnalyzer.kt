@@ -1,8 +1,8 @@
 package com.blindnav.app.domain
 
-import android.graphics.Rect
 import com.blindnav.app.domain.model.DetectedObstacle
 import com.blindnav.app.domain.model.HazardLevel
+import com.blindnav.app.domain.model.ObstacleBounds
 import com.blindnav.app.domain.model.SafetyAnalysisResult
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.objects.ObjectDetection
@@ -20,6 +20,11 @@ import kotlin.coroutines.resumeWithException
  * Analiza frames de la cámara para detectar obstáculos y calcular
  * el nivel de peligro basado en heurísticas de proximidad.
  * 
+ * 🔴 MODO CROSSING_GUARD (NUEVO):
+ * - Hipersensible a vehículos: Car, Bus, Truck, Motorcycle
+ * - Umbral reducido: 20% altura = CRITICAL (vs 40% normal)
+ * - Alerta inmediata si vehículo detectado cerca
+ * 
  * LÓGICA DE COLISIÓN HEURÍSTICA:
  * - Se basa en el tamaño relativo del BoundingBox respecto a la imagen
  * - Un objeto que ocupa más del 40% vertical y está centrado = PELIGRO CRÍTICO
@@ -36,16 +41,127 @@ class SafetyAnalyzer(
     private val centerTolerance: Float = 0.3f
 ) {
     
-    // Detector de objetos ML Kit configurado para modo STREAM (tiempo real)
-    private val objectDetector: ObjectDetector by lazy {
+    /**
+     * Modo de análisis de seguridad
+     */
+    enum class AnalysisMode {
+        /** Modo normal de detección de obstáculos */
+        NORMAL,
+        
+        /** 🔴 Modo CROSSING GUARD - Hipersensible a vehículos */
+        CROSSING_GUARD
+    }
+    
+    // Estado actual del analizador
+    private var currentMode: AnalysisMode = AnalysisMode.NORMAL
+    
+    // Etiquetas de vehículos para detección prioritaria
+    private val vehicleLabels = setOf(
+        "car", "bus", "truck", "motorcycle", "bicycle",
+        "vehicle", "automobile", "van"
+    )
+    
+    // Analizar cada imagen de forma independiente evita que el detector dependa
+    // de marcas de tiempo perfectas. Algunas cámaras y el emulador pueden entregar
+    // dos frames con la misma marca y ML Kit rechaza entonces todo el flujo.
+    private val detectorDelegate = lazy {
         val options = ObjectDetectorOptions.Builder()
-            .setDetectorMode(ObjectDetectorOptions.STREAM_MODE) // Optimizado para video
+            .setDetectorMode(ObjectDetectorOptions.SINGLE_IMAGE_MODE)
             .enableMultipleObjects() // Detectar múltiples obstáculos
             .enableClassification() // Clasificar tipo de objeto
             .build()
         
         ObjectDetection.getClient(options)
     }
+    private val objectDetector: ObjectDetector get() = detectorDelegate.value
+    
+    /**
+     * 🔴 Activa modo CROSSING GUARD - Hipersensible a vehículos
+     */
+    fun enableCrossingGuardMode() {
+        currentMode = AnalysisMode.CROSSING_GUARD
+    }
+    
+    /**
+     * Desactiva modo CROSSING GUARD y vuelve a modo normal
+     */
+    fun disableCrossingGuardMode() {
+        currentMode = AnalysisMode.NORMAL
+    }
+    
+    /**
+     * 🔴 DETECCIÓN DE TRÁFICO HIPERSENSIBLE
+     * 
+     * Detecta vehículos cercanos con umbral reducido (20% vs 40%)
+     * Usado durante cruces de calle para máxima seguridad
+     * 
+     * @return true si hay vehículo peligroso cerca
+     */
+    suspend fun checkForTraffic(
+        inputImage: InputImage,
+        imageWidth: Int,
+        imageHeight: Int
+    ): TrafficDetectionResult = withContext(Dispatchers.Default) {
+        try {
+            val detectedObjects = detectObjects(inputImage)
+            
+            // Filtrar solo vehículos
+            val vehicles = detectedObjects.filter { obj ->
+                obj.labels.any { label ->
+                    vehicleLabels.contains(label.text.lowercase())
+                }
+            }
+            
+            if (vehicles.isEmpty()) {
+                return@withContext TrafficDetectionResult(
+                    hasVehicle = false,
+                    isCritical = false,
+                    message = "No se identifican vehículos. No confirma que se pueda cruzar."
+                )
+            }
+            
+            // Analizar vehículo más grande (más cercano)
+            val largestVehicle = vehicles.maxByOrNull { it.boundingBox.height() }!!
+            val heightRatio = largestVehicle.boundingBox.height().toFloat() / imageHeight
+            
+            // 🔴 UMBRAL REDUCIDO para cruces: 20% en lugar de 40%
+            val isCritical = heightRatio > 0.2f
+            
+            val vehicleLabel = largestVehicle.labels.firstOrNull()?.text ?: "vehículo"
+            val message = if (isCritical) {
+                "¡$vehicleLabel CERCA! ESPERA"
+            } else {
+                "$vehicleLabel detectado a distancia"
+            }
+            
+            TrafficDetectionResult(
+                hasVehicle = true,
+                isCritical = isCritical,
+                message = message,
+                vehicleType = vehicleLabel,
+                distance = if (isCritical) "CERCA" else "LEJOS"
+            )
+        } catch (e: Exception) {
+            TrafficDetectionResult(
+                hasVehicle = false,
+                isCritical = true,
+                message = "Detección no disponible. No cruces.",
+                isOperational = false
+            )
+        }
+    }
+    
+    /**
+     * Resultado de detección de tráfico
+     */
+    data class TrafficDetectionResult(
+        val hasVehicle: Boolean,
+        val isCritical: Boolean,
+        val message: String,
+        val vehicleType: String? = null,
+        val distance: String? = null,
+        val isOperational: Boolean = true
+    )
 
     /**
      * Analiza un frame de imagen y retorna el resultado de seguridad.
@@ -69,7 +185,12 @@ class SafetyAnalyzer(
             // Convertir a nuestro modelo de dominio
             val obstacles = detectedObjects.map { obj ->
                 DetectedObstacle(
-                    boundingBox = obj.boundingBox,
+                    boundingBox = ObstacleBounds(
+                        left = obj.boundingBox.left,
+                        top = obj.boundingBox.top,
+                        right = obj.boundingBox.right,
+                        bottom = obj.boundingBox.bottom
+                    ),
                     label = obj.labels.firstOrNull()?.text,
                     confidence = obj.labels.firstOrNull()?.confidence ?: 0f,
                     trackingId = obj.trackingId
@@ -84,14 +205,20 @@ class SafetyAnalyzer(
             SafetyAnalysisResult(
                 hazardLevel = hazardLevel,
                 obstacles = obstacles,
-                processingTimeMs = processingTime
+                processingTimeMs = processingTime,
+                imageWidth = imageWidth,
+                imageHeight = imageHeight
             )
         } catch (e: Exception) {
-            // En caso de error, retornar estado seguro pero registrar
+            // Un fallo del detector no puede presentarse como un entorno seguro.
             SafetyAnalysisResult(
-                hazardLevel = HazardLevel.SAFE,
+                hazardLevel = HazardLevel.WARNING,
                 obstacles = emptyList(),
-                processingTimeMs = System.currentTimeMillis() - startTime
+                processingTimeMs = System.currentTimeMillis() - startTime,
+                isOperational = false,
+                errorMessage = e.message ?: "Detector no disponible",
+                imageWidth = imageWidth,
+                imageHeight = imageHeight
             )
         }
     }
@@ -116,7 +243,9 @@ class SafetyAnalyzer(
         return SafetyAnalysisResult(
             hazardLevel = hazardLevel,
             obstacles = obstacles,
-            processingTimeMs = System.currentTimeMillis() - startTime
+            processingTimeMs = System.currentTimeMillis() - startTime,
+            imageWidth = imageWidth,
+            imageHeight = imageHeight
         )
     }
 
@@ -126,6 +255,7 @@ class SafetyAnalyzer(
      * Calcula el nivel de peligro basándose en:
      * 1. Tamaño vertical del objeto más grande respecto a la pantalla
      * 2. Posición horizontal del objeto (centrado = más peligroso)
+     * 3. 🔴 Modo CROSSING_GUARD: Umbral reducido si detecta vehículos
      * 
      * @param obstacles Lista de obstáculos detectados
      * @param imageWidth Ancho de la imagen
@@ -141,9 +271,12 @@ class SafetyAnalyzer(
             return HazardLevel.SAFE
         }
 
+        // 🔴 En modo CROSSING_GUARD, priorizar vehículos
+        if (imageWidth <= 0 || imageHeight <= 0) return HazardLevel.WARNING
+        val relevantObstacles = obstacles
+
         // Encontrar el obstáculo más grande (más cercano)
-        val largestObstacle = obstacles.maxByOrNull { it.boundingBox.height() }
-            ?: return HazardLevel.SAFE
+        return relevantObstacles.maxOf { largestObstacle ->
 
         val boxHeight = largestObstacle.boundingBox.height().toFloat()
         val boxCenterX = largestObstacle.centerX.toFloat()
@@ -156,16 +289,24 @@ class SafetyAnalyzer(
         val horizontalOffset = kotlin.math.abs(boxCenterX - imageCenterX)
         val maxOffset = imageWidth * centerTolerance
         val isCentered = horizontalOffset <= maxOffset
+        
+        // 🔴 Ajustar umbrales si estamos en modo CROSSING_GUARD
+        val criticalThreshold = if (currentMode == AnalysisMode.CROSSING_GUARD) {
+            0.2f // Umbral reducido para cruces
+        } else {
+            criticalHeightThreshold
+        }
 
-        return when {
-            // CRITICAL: Objeto grande (>40% altura) Y centrado
-            heightRatio > criticalHeightThreshold && isCentered -> HazardLevel.CRITICAL
+        when {
+            // CRITICAL: Objeto grande Y centrado
+            heightRatio > criticalThreshold && isCentered -> HazardLevel.CRITICAL
             
-            // WARNING: Objeto de tamaño medio (10-40%) o grande pero no centrado
+            // WARNING: Objeto de tamaño medio o grande pero no centrado
             heightRatio > safeHeightThreshold -> HazardLevel.WARNING
             
-            // SAFE: Objeto pequeño (<10%) - está lejos
+            // SAFE: Objeto pequeño - está lejos
             else -> HazardLevel.SAFE
+        }
         }
     }
 
@@ -178,10 +319,10 @@ class SafetyAnalyzer(
         suspendCancellableCoroutine { continuation ->
             objectDetector.process(inputImage)
                 .addOnSuccessListener { objects ->
-                    continuation.resume(objects)
+                    if (continuation.isActive) continuation.resume(objects)
                 }
                 .addOnFailureListener { exception ->
-                    continuation.resumeWithException(exception)
+                    if (continuation.isActive) continuation.resumeWithException(exception)
                 }
                 .addOnCanceledListener {
                     continuation.cancel()
@@ -193,7 +334,7 @@ class SafetyAnalyzer(
      * Llamar cuando se destruya la Activity/Fragment.
      */
     fun close() {
-        objectDetector.close()
+        if (detectorDelegate.isInitialized()) objectDetector.close()
     }
 
     companion object {
@@ -215,7 +356,7 @@ class SafetyAnalyzer(
             label: String? = "obstacle"
         ): DetectedObstacle {
             return DetectedObstacle(
-                boundingBox = Rect(left, top, right, bottom),
+                boundingBox = ObstacleBounds(left, top, right, bottom),
                 label = label,
                 confidence = 0.9f,
                 trackingId = null

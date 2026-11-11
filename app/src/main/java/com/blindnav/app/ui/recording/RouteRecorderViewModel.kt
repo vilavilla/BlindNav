@@ -15,10 +15,13 @@ import com.blindnav.app.data.db.entity.PathPoint
 import com.blindnav.app.data.db.entity.Route
 import com.blindnav.app.data.sensors.LocationSensorManager
 import com.blindnav.app.data.sensors.UserOrientation
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import android.util.Log
 
 /**
  * Estado de la UI de grabación de rutas (Waze-style).
@@ -61,6 +64,8 @@ class RouteRecorderViewModel(
 ) : ViewModel() {
     
     companion object {
+        private const val TAG = "RouteRecorderViewModel"
+        
         /** Distancia mínima entre PathPoints en metros */
         private const val PATH_POINT_MIN_DISTANCE_METERS = 5f
     }
@@ -88,29 +93,53 @@ class RouteRecorderViewModel(
      * @return true si se inició correctamente
      */
     fun startRecording(routeName: String): Boolean {
-        if (_uiState.value.isRecording) return false
+        if (_uiState.value.isRecording) {
+            Log.w(TAG, "Ya hay una grabación activa")
+            return false
+        }
+        
+        if (routeName.isBlank()) {
+            Log.e(TAG, "Nombre de ruta vacío")
+            return false
+        }
         
         viewModelScope.launch {
-            val route = Route(name = routeName, isActive = true)
-            val routeId = routeDao.insert(route)
-            activeRouteId = routeId
-            
-            val insertedRoute = routeDao.getRouteById(routeId)
-            
-            // Iniciar tracking de ubicación
-            locationSensorManager.startTracking()
-            
-            // Iniciar auto-tracking de PathPoints
-            startPathTracking()
-            
-            _uiState.update {
-                it.copy(
-                    isRecording = true,
-                    currentRoute = insertedRoute,
-                    eventCount = 0,
-                    pathPointCount = 0,
-                    statusMessage = "Grabando ruta: $routeName"
-                )
+            try {
+                // 🛡️ BLINDADO: Operaciones de DB en Dispatchers.IO
+                val routeId = withContext(Dispatchers.IO) {
+                    val route = Route(name = routeName, isActive = true)
+                    routeDao.insert(route)
+                }
+                
+                activeRouteId = routeId
+                
+                val insertedRoute = withContext(Dispatchers.IO) {
+                    routeDao.getRouteById(routeId)
+                }
+                
+                // Iniciar tracking de ubicación
+                locationSensorManager.startTracking()
+                
+                // Iniciar auto-tracking de PathPoints
+                startPathTracking()
+                
+                _uiState.update {
+                    it.copy(
+                        isRecording = true,
+                        currentRoute = insertedRoute,
+                        eventCount = 0,
+                        pathPointCount = 0,
+                        statusMessage = "Grabando ruta: $routeName"
+                    )
+                }
+                
+                Log.d(TAG, "✓ Grabación iniciada: ID=$routeId, nombre=$routeName")
+                
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Error iniciando grabación", e)
+                _uiState.update {
+                    it.copy(statusMessage = "Error: ${e.message}")
+                }
             }
         }
         return true
@@ -120,32 +149,60 @@ class RouteRecorderViewModel(
      * Detiene la grabación de ruta actual.
      */
     fun stopRecording() {
-        if (!_uiState.value.isRecording) return
+        if (!_uiState.value.isRecording) {
+            Log.w(TAG, "No hay grabación activa para detener")
+            return
+        }
         
         viewModelScope.launch {
-            // Detener auto-tracking
-            stopPathTracking()
-            
-            activeRouteId?.let { routeId ->
-                val eventCount = mapEventDao.getEventCount(routeId)
-                if (eventCount == 0) {
-                    // Eliminar ruta vacía
-                    routeDao.getRouteById(routeId)?.let { route ->
-                        routeDao.delete(route)
+            try {
+                // Detener auto-tracking
+                stopPathTracking()
+                
+                // 🛡️ BLINDADO: Operaciones de DB en Dispatchers.IO
+                activeRouteId?.let { routeId ->
+                    withContext(Dispatchers.IO) {
+                        val eventCount = mapEventDao.getEventCount(routeId)
+                        if (eventCount == 0) {
+                            // Eliminar ruta vacía
+                            routeDao.getRouteById(routeId)?.let { route ->
+                                routeDao.delete(route)
+                                Log.d(TAG, "✓ Ruta vacía eliminada: ID=$routeId")
+                            }
+                        } else {
+                            Log.d(TAG, "✓ Ruta guardada: ID=$routeId, eventos=$eventCount")
+                        }
                     }
                 }
-            }
-            
-            locationSensorManager.stopTracking()
-            activeRouteId = null
-            lastPathPointLocation = null
-            
-            _uiState.update {
-                it.copy(
-                    isRecording = false,
-                    currentRoute = null,
-                    statusMessage = "Grabación finalizada"
-                )
+                
+                locationSensorManager.stopTracking()
+                activeRouteId = null
+                lastPathPointLocation = null
+                
+                _uiState.update {
+                    it.copy(
+                        isRecording = false,
+                        currentRoute = null,
+                        statusMessage = "Grabación finalizada"
+                    )
+                }
+                
+                Log.d(TAG, "✓ Grabación detenida correctamente")
+                
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Error deteniendo grabación", e)
+                // Asegurarse de limpiar el estado incluso si hay error
+                locationSensorManager.stopTracking()
+                activeRouteId = null
+                lastPathPointLocation = null
+                
+                _uiState.update {
+                    it.copy(
+                        isRecording = false,
+                        currentRoute = null,
+                        statusMessage = "Error al detener: ${e.message}"
+                    )
+                }
             }
         }
     }
@@ -164,35 +221,60 @@ class RouteRecorderViewModel(
      * @return true si se guardó correctamente
      */
     fun reportEvent(type: EventType, description: String = ""): Boolean {
-        val routeId = activeRouteId ?: return false
-        val orientation = getCurrentOrientation() ?: return false
+        val routeId = activeRouteId
+        if (routeId == null) {
+            Log.w(TAG, "No hay ruta activa para reportar evento")
+            return false
+        }
+        
+        // 🛡️ VALIDACIÓN: Verificar que tenemos ubicación
+        val orientation = getCurrentOrientation()
+        if (orientation == null) {
+            Log.e(TAG, "❌ No se puede reportar evento: GPS sin ubicación")
+            _uiState.update {
+                it.copy(statusMessage = "Error: GPS sin señal")
+            }
+            return false
+        }
         
         viewModelScope.launch {
-            // Obtener el siguiente índice de orden
-            val maxIndex = mapEventDao.getMaxOrderIndex(routeId) ?: -1
-            val newIndex = maxIndex + 1
-            
-            val event = MapEvent(
-                routeId = routeId,
-                type = type,
-                latitude = orientation.latitude,
-                longitude = orientation.longitude,
-                description = description.ifEmpty { type.displayName },
-                bearing = orientation.bearing,
-                gpsAccuracy = orientation.accuracy,
-                orderIndex = newIndex
-            )
-            
-            mapEventDao.insert(event)
-            
-            val newCount = mapEventDao.getEventCount(routeId)
-            
-            _uiState.update {
-                it.copy(
-                    eventCount = newCount,
-                    lastEvent = event,
-                    statusMessage = "${type.emoji} ${type.displayName} reportado"
-                )
+            try {
+                // 🛡️ BLINDADO: Operaciones de DB en Dispatchers.IO
+                withContext(Dispatchers.IO) {
+                    // Obtener el siguiente índice de orden
+                    val maxIndex = mapEventDao.getMaxOrderIndex(routeId) ?: -1
+                    val newIndex = maxIndex + 1
+                    
+                    val event = MapEvent(
+                        routeId = routeId,
+                        type = type,
+                        latitude = orientation.latitude,
+                        longitude = orientation.longitude,
+                        description = description.ifEmpty { type.displayName },
+                        bearing = orientation.bearing,
+                        gpsAccuracy = orientation.accuracy,
+                        orderIndex = newIndex
+                    )
+                    
+                    mapEventDao.insert(event)
+                    
+                    val newCount = mapEventDao.getEventCount(routeId)
+                    
+                    _uiState.update {
+                        it.copy(
+                            eventCount = newCount,
+                            lastEvent = event,
+                            statusMessage = "${type.emoji} ${type.displayName} reportado"
+                        )
+                    }
+                    
+                    Log.d(TAG, "✓ Evento reportado: $type en (${orientation.latitude}, ${orientation.longitude})")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Error reportando evento", e)
+                _uiState.update {
+                    it.copy(statusMessage = "Error: ${e.message}")
+                }
             }
         }
         return true
@@ -256,27 +338,35 @@ class RouteRecorderViewModel(
     private suspend fun checkAndSavePathPoint(orientation: UserOrientation) {
         val routeId = activeRouteId ?: return
         
-        val currentLocation = orientation.toLocation()
-        val lastLocation = lastPathPointLocation
-        
-        // Verificar si hay que guardar (primera vez o distancia >= 5m)
-        val shouldSave = lastLocation == null || 
-            lastLocation.distanceTo(currentLocation) >= PATH_POINT_MIN_DISTANCE_METERS
-        
-        if (shouldSave) {
-            val pathPoint = PathPoint(
-                routeId = routeId,
-                latitude = orientation.latitude,
-                longitude = orientation.longitude
-            )
+        try {
+            val currentLocation = orientation.toLocation()
+            val lastLocation = lastPathPointLocation
             
-            pathPointDao.insert(pathPoint)
-            lastPathPointLocation = currentLocation
+            // Verificar si hay que guardar (primera vez o distancia >= 5m)
+            val shouldSave = lastLocation == null || 
+                lastLocation.distanceTo(currentLocation) >= PATH_POINT_MIN_DISTANCE_METERS
             
-            val newCount = pathPointDao.getPointCount(routeId)
-            _uiState.update {
-                it.copy(pathPointCount = newCount)
+            if (shouldSave) {
+                // 🛡️ BLINDADO: Operación de DB en Dispatchers.IO
+                withContext(Dispatchers.IO) {
+                    val pathPoint = PathPoint(
+                        routeId = routeId,
+                        latitude = orientation.latitude,
+                        longitude = orientation.longitude
+                    )
+                    
+                    pathPointDao.insert(pathPoint)
+                    lastPathPointLocation = currentLocation
+                    
+                    val newCount = pathPointDao.getPointCount(routeId)
+                    _uiState.update {
+                        it.copy(pathPointCount = newCount)
+                    }
+                }
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Error guardando PathPoint", e)
+            // No propagar el error para no interrumpir el tracking
         }
     }
     

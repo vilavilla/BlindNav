@@ -2,6 +2,7 @@ package com.blindnav.app.data.source
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.ImageFormat
 import android.util.Size
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -133,15 +134,23 @@ class LocalCameraSource(
             val mediaImage = imageProxy.image
             
             if (mediaImage != null) {
-                val inputImage = InputImage.fromMediaImage(
-                    mediaImage,
-                    imageProxy.imageInfo.rotationDegrees
+                // Copia los planos antes de cerrar ImageProxy. InputImage.fromMediaImage
+                // conservaría una referencia a memoria ya liberada al emitir por el Flow.
+                val bytes = imageProxyToNv21(imageProxy)
+                val rotation = imageProxy.imageInfo.rotationDegrees
+                val inputImage = InputImage.fromByteArray(
+                    bytes,
+                    imageProxy.width,
+                    imageProxy.height,
+                    rotation,
+                    InputImage.IMAGE_FORMAT_NV21
                 )
+                val quarterTurn = rotation % 180 != 0
                 
                 val frameData = FrameData(
                     image = inputImage,
-                    width = imageProxy.width,
-                    height = imageProxy.height,
+                    width = if (quarterTurn) imageProxy.height else imageProxy.width,
+                    height = if (quarterTurn) imageProxy.width else imageProxy.height,
                     timestamp = System.currentTimeMillis()
                 )
                 
@@ -152,5 +161,29 @@ class LocalCameraSource(
             // CRÍTICO: Siempre cerrar el proxy
             imageProxy.close()
         }
+    }
+
+    private fun imageProxyToNv21(image: ImageProxy): ByteArray {
+        require(image.format == ImageFormat.YUV_420_888)
+        val width = image.width
+        val height = image.height
+        val output = ByteArray(width * height * 3 / 2)
+        val yPlane = image.planes[0]
+        val uPlane = image.planes[1]
+        val vPlane = image.planes[2]
+
+        var offset = 0
+        for (row in 0 until height) {
+            for (column in 0 until width) {
+                output[offset++] = yPlane.buffer.get(row * yPlane.rowStride + column * yPlane.pixelStride)
+            }
+        }
+        for (row in 0 until height / 2) {
+            for (column in 0 until width / 2) {
+                output[offset++] = vPlane.buffer.get(row * vPlane.rowStride + column * vPlane.pixelStride)
+                output[offset++] = uPlane.buffer.get(row * uPlane.rowStride + column * uPlane.pixelStride)
+            }
+        }
+        return output
     }
 }

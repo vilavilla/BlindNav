@@ -14,12 +14,15 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.blindnav.app.data.db.BlindNavDatabase
 import com.blindnav.app.data.osm.NominatimGeocoder
 import com.blindnav.app.databinding.ActivityHomeBinding
 import com.blindnav.app.ui.audio.PriorityAudioManager
 import com.blindnav.app.ui.navigation.NavigationActivity
 import com.blindnav.app.ui.preview.RoutePreviewActivity
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -84,6 +87,9 @@ class HomeActivity : AppCompatActivity() {
 
     /**
      * Configuración crítica de osmdroid
+     * 
+     * ❗ IMPORTANTE: User-Agent OBLIGATORIO para evitar bloqueos de servidores OSM
+     * Nominatim y otros servicios de OSM requieren un User-Agent descriptivo.
      */
     private fun configureOsmdroid() {
         Configuration.getInstance().load(
@@ -91,8 +97,12 @@ class HomeActivity : AppCompatActivity() {
             PreferenceManager.getDefaultSharedPreferences(this)
         )
         
-        // User-Agent OBLIGATORIO
-        Configuration.getInstance().userAgentValue = "BlindNav/1.0 (Android Accessibility Navigation)"
+        // ✓ User-Agent con contacto (requerido por política de OSM)
+        // Formato: AppName/Version (Platform; Description; contact@email.com)
+        Configuration.getInstance().userAgentValue = 
+            "BlindNav/1.0 (Android; Accessibility Navigation App; blindnav.app@gmail.com)"
+        
+        Log.d(TAG, "✓ osmdroid configurado con User-Agent: ${Configuration.getInstance().userAgentValue}")
     }
 
     private fun initializeDependencies() {
@@ -113,11 +123,8 @@ class HomeActivity : AppCompatActivity() {
             // Habilitar controles táctiles (zoom con dedos)
             setMultiTouchControls(true)
             
-            // Zoom inicial nivel calle (18 = muy cercano)
-            controller.setZoom(18.0)
-            
-            // Centro inicial en Barcelona (se actualizará con GPS)
-            controller.setCenter(GeoPoint(41.3851, 2.1734))
+            // Zoom inicial: nivel regional hasta que el GPS fije la posición real
+            controller.setZoom(15.0)
             
             // Invalidar para forzar renderizado
             invalidate()
@@ -264,12 +271,58 @@ class HomeActivity : AppCompatActivity() {
         binding.btnRecordRoute.setOnClickListener {
             openRecordingMode()
         }
+
+        binding.btnSafetyMode.setOnClickListener {
+            startActivity(Intent(this, NavigationActivity::class.java).apply {
+                putExtra(NavigationActivity.EXTRA_MODE, NavigationActivity.MODE_SAFETY)
+            })
+        }
         
         // Botón Mis Rutas
         binding.btnMyRoutes.setOnClickListener {
-            // TODO: Abrir lista de rutas guardadas
-            Toast.makeText(this, "Mis rutas próximamente", Toast.LENGTH_SHORT).show()
+            showSavedRoutes()
         }
+    }
+
+    private fun showSavedRoutes() {
+        val list = RecyclerView(this).apply {
+            layoutManager = LinearLayoutManager(this@HomeActivity)
+            setPadding(16, 16, 16, 16)
+        }
+        lateinit var dialog: androidx.appcompat.app.AlertDialog
+        val adapter = RouteAdapter(
+            onRouteClick = { route ->
+                dialog.dismiss()
+                startActivity(Intent(this, RoutePreviewActivity::class.java).apply {
+                    putExtra(RoutePreviewActivity.EXTRA_ROUTE_ID, route.id)
+                    putExtra(RoutePreviewActivity.EXTRA_ROUTE_NAME, route.name)
+                })
+            },
+            onDeleteClick = { route ->
+                MaterialAlertDialogBuilder(this)
+                    .setTitle("Eliminar ruta")
+                    .setMessage("¿Quieres eliminar ${route.name}?")
+                    .setNegativeButton("Cancelar", null)
+                    .setPositiveButton("Eliminar") { _, _ ->
+                        lifecycleScope.launch { database.routeDao().delete(route) }
+                    }
+                    .show()
+            }
+        )
+        list.adapter = adapter
+        val collectionJob = lifecycleScope.launch {
+            database.routeDao().getAllRoutes().collect { routes ->
+                adapter.submitList(routes)
+                if (routes.isEmpty()) audioManager.speakSystem("No hay rutas guardadas todavía")
+            }
+        }
+        dialog = MaterialAlertDialogBuilder(this)
+            .setTitle("Mis rutas guardadas")
+            .setView(list)
+            .setNegativeButton("Cerrar", null)
+            .create()
+        dialog.setOnDismissListener { collectionJob.cancel() }
+        dialog.show()
     }
 
     /**

@@ -12,13 +12,17 @@ data class SafetyAnalysisResult(
     val hazardLevel: HazardLevel,
     val obstacles: List<DetectedObstacle> = emptyList(),
     val processingTimeMs: Long = 0L,
-    val frameTimestamp: Long = System.currentTimeMillis()
+    val frameTimestamp: Long = System.currentTimeMillis(),
+    val isOperational: Boolean = true,
+    val errorMessage: String? = null,
+    val imageWidth: Int = 640,
+    val imageHeight: Int = 480
 ) {
     /**
      * Indica si hay peligro inminente que requiere alerta
      */
     val requiresAlert: Boolean
-        get() = hazardLevel == HazardLevel.CRITICAL || hazardLevel == HazardLevel.WARNING
+        get() = !isOperational || hazardLevel == HazardLevel.CRITICAL || hazardLevel == HazardLevel.WARNING
 
     /**
      * Obtiene el obstáculo más peligroso (el más grande/cercano)

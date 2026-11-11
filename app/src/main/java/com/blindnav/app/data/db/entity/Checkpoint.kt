@@ -62,8 +62,17 @@ enum class CheckpointType {
     /** Paso de cebra - activa crossing assist */
     ZEBRA_CROSSING,
     
+    /** Cruce de calle - activa crossing assist y heading lock */
+    CROSSING,
+    
     /** Esquina o giro */
     CORNER,
+    
+    /** Giro o maniobra específica (TURN se usa en instrucciones OSRM) */
+    TURN,
+    
+    /** Alerta general (semáforo, rotonda) */
+    ALERT,
     
     /** Entrada de edificio */
     ENTRANCE,
